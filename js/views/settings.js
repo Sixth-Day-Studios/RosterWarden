@@ -18,6 +18,7 @@ import { openWizard } from './wizard.js';
 import { canInstall, isInstalled, isIOS, promptInstall } from '../install.js';
 import * as staff from '../staff.js';
 import * as account from '../account.js';
+import { openAskGuardian } from '../askguardian.js';
 import { signInButtons } from './account.js';
 import { STORED_KEY as STAFF_LINK_KEY } from './staff.js';
 import { looksLikeEmail } from '../email.js';
@@ -60,6 +61,8 @@ const MENU = [
     group: 'App',
     items: [
       { id: 'install', label: 'Add to Home Screen', hint: 'One tap away, and working offline' },
+      // Not a section: opens the Ask Guardian chat in an overlay.
+      { id: 'ask', label: 'Ask Guardian', hint: 'Ask a question and get an answer', run: openAskGuardian },
       // Not a section: opens the website's guide in a new tab.
       { id: 'help', label: 'Help and FAQ', hint: 'Step-by-step guide and common questions', run: openHelp, external: true },
     ],
@@ -126,8 +129,8 @@ function renderMenu(container) {
     el('label', { className: 'label', textContent: group.group }),
     el('div', { className: 'list' }, group.items.map((item) => el('button', {
       className: 'item',
-      onclick: () => {
-        if (item.run) { item.run(); return; }
+      onclick: (e) => {
+        if (item.run) { item.run(e.currentTarget); return; }
         section = item.id;
         render(container);
       },

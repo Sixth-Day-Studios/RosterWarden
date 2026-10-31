@@ -13,7 +13,7 @@
  * cross-origin and must always go to the network, never to a cache.
  */
 
-const CACHE = 'rosterwarden-v1';
+const CACHE = 'rosterwarden-v2';
 
 /** Pathnames (relative to scope) that make up the precached app shell. */
 const SHELL_PATHS = new Set();
@@ -35,6 +35,7 @@ const SHELL = [
   './js/install.js',
   './js/sync.js',
   './js/config.js',
+  './js/askguardian.js',
   './js/views/roster.js',
   './js/views/roster-parts.js',
   './js/views/planning-center.js',

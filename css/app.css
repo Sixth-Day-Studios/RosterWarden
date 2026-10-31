@@ -649,3 +649,18 @@ pre.roster-text {
   #print-sheet .print-gap { font-style: italic; color: #a33; font-size: 9pt; }
   #print-sheet .print-foot { margin-top: 10pt; font-size: 8pt; color: #666; }
 }
+
+/* ── Ask Guardian overlay (askguardian.js): the sixthdaystudios.com chat page in an iframe ── */
+.ask-overlay { position: fixed; inset: 0; z-index: 50; display: flex; background: var(--bg); }
+.ask-overlay[hidden] { display: none; }
+.ask-panel { display: flex; flex-direction: column; flex: 1; min-width: 0; background: var(--surface); }
+.ask-head { display: flex; align-items: center; gap: .6rem; padding: .3rem .3rem .3rem 1rem; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.ask-head h2 { flex: 1; margin: 0; font-size: 1rem; }
+.ask-close { width: var(--tap); height: var(--tap); border: 0; border-radius: var(--radius-s); background: transparent; color: var(--ink); font-size: 1.6rem; line-height: 1; cursor: pointer; }
+.ask-close:hover { background: var(--line); }
+.ask-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ask-frame { flex: 1; width: 100%; border: 0; background: var(--surface); color-scheme: normal; }
+@media (min-width: 600px) {
+  .ask-overlay { inset: auto 20px 20px auto; width: 420px; height: min(640px, calc(100vh - 40px)); border: 1px solid var(--line);
+                 border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+}
