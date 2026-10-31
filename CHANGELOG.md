@@ -4,6 +4,12 @@ What changed in RosterWarden, newest first. Dates are when each change reached
 `main`. Entries before 31 October 2026 were written afterwards from the merged
 pull requests, which are linked so the full detail is one click away.
 
+## 1 November 2026
+
+- Settings has an *Ask Guardian* button above *Help and FAQ*. It opens the
+  Sixth Day Studios help chat over the app, already knowing you're in
+  RosterWarden. Close it with the cross or Esc.
+
 ## 31 October 2026
 
 All in [#35].
