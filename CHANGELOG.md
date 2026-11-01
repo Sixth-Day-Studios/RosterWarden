@@ -30,10 +30,10 @@ pull requests, which are linked so the full detail is one click away.
   help is one tap from anywhere (it's still in Settings too). Her guide now
   matches the new Rosters tab, and she can answer how-to questions in a few
   numbered steps instead of squeezing them into four sentences.
-- Guardian's face at the top right of the screen opens **Ask Guardian**, so
-  help is one tap from anywhere (it's still in Settings too). Her guide now
-  matches the new Rosters tab, and she can answer how-to questions in a few
-  numbered steps instead of squeezing them into four sentences.
+- Guardian knows which screen you're on. When an answer is about a place in
+  the app, **Show me** under it closes the chat, takes you there and makes the
+  right heading or button glow. Her panel has one title and close button now,
+  not two.
 - The offline copy is now `rosterwarden-v3`, so every installed copy loads the
   new tabs fresh.
 
