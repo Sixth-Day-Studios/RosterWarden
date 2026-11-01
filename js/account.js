@@ -132,6 +132,9 @@ export async function finish(search) {
     p = JSON.parse(localStorage.getItem(PENDING_KEY) || 'null');
     localStorage.removeItem(PENDING_KEY);      // used once, whatever happens next
   } catch { /* nothing kept: treated as not started here */ }
+  // Already signed in with no sign-in under way: a stray second trip back from
+  // the site (say, Back through its sign-in page) has nothing to finish.
+  if (!p && stored()) return null;
   if (!p || p.until < Date.now() || p.state !== q.get('state')) {
     throw new AccountError('That sign-in wasn\'t started on this device, or took too long. Please tap Sign in again.');
   }

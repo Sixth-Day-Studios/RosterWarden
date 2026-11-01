@@ -100,6 +100,13 @@ test('a sign-in this device did not start, or one with the wrong state, is refus
   assert.equal(account.current(), null);
 });
 
+test('a stray trip back from the site once signed in is ignored, not an error', async () => {
+  setUp();
+  await signIn();
+  assert.equal(await account.finish('?code=x&state=y'), null);
+  assert.equal(account.current().email, 'boss@example.com');
+});
+
 test('a sign-in that took too long is refused', async () => {
   setUp();
   const back = siteSendsBack(await account.begin());
