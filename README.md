@@ -104,7 +104,8 @@ A roster you just built and one from months ago open on the same screen and
 can do the same things. **← Rosters**, **Edit** and **Send** are in a bar pinned
 at the foot of the screen (**Edit** reads **Done** while editing, and says
 "Saved": changes already save as you go). **Undo** and **Rebuild** sit under the
-name, **Next roster** and **Delete** below the days; tap the name to rename it.
+name, **Next roster** below the days; tap the name to rename it. To delete a
+roster, tap the bin beside it in the list.
 
 - **Things to check** (folded until opened) lists what couldn't be done.
   **Fill the gaps** turns "Drums: short on 2 days" into a picker of who else
@@ -155,6 +156,13 @@ straight away and changeable. Answers land in the roster's `responses` with the
 same codes as Planning Center replies, so the roster shows ✓ or ✕ by their
 name and a "can't" appears under **declined** with **Replace**. An answer is
 for that person on that place, so it drops if the place goes to someone else.
+
+A shift they said they can do that is then taken off them (taken off by hand,
+the shift removed from that day, the day taken off, or the roster deleted) shows
+on their page under **Cancelled** until the day has passed, so it doesn't just
+vanish. A shift they swapped to someone else isn't one, and an **Undo** takes it
+off the list again. The confirms for removing a shift and deleting a roster name
+anyone who said they can do it.
 
 Their page also has a **Your details** card (name, email, mobile), sent with
 Save. Email and mobile replace yours straight away (a malformed email is

@@ -142,7 +142,10 @@ function renderList(rosters, container) {
     el('option', { value: 'oldest', textContent: 'Oldest first', selected: order === 'oldest' }),
   ]);
   sort.addEventListener('change', () => { store.setSetting('rosterSort', sort.value); render(container); });
-  const items = sorted.map((r) => (r.draft ? draftRow(r) : savedRow(r, container)));
+  // Each row has its bin beside it: a row is itself a button, so the bin can't go inside it.
+  const items = sorted.map((r) => el('div', { className: 'item-with-bin' }, [
+    r.draft ? draftRow(r) : savedRow(r, container), binButton(r, container),
+  ]));
   const newBtn = el('button', {
     type: 'button', className: 'btn btn-sm btn-primary', textContent: '+ New roster', onclick: () => show('new'),
   });
@@ -150,6 +153,37 @@ function renderList(rosters, container) {
     el('div', { className: 'spread' }, [el('strong', { textContent: 'Rosters' }), el('div', { className: 'row-tight' }, [sort, newBtn])]),
     el('div', { className: 'list' }, items),
   ];
+}
+
+/**
+ * The bin beside a roster in the list: deletes it after asking, naming anyone
+ * who said they can do one of its shifts still to come.
+ */
+function binButton(r, container) {
+  return el('button', {
+    type: 'button', className: 'btn btn-danger item-bin', 'aria-label': `Delete ${r.name}`, title: 'Delete',
+    onclick: async () => {
+      const ok = await confirmDialog(`Delete ${r.name}?`, `This cannot be undone.${staff.cancelWarning(staff.saidYes(r), 'shifts on it')}`, 'Delete');
+      if (!ok) return;
+      store.deleteRoster(r.id);
+      toast('Deleted');
+      render(container);
+    },
+  }, [binIcon()]);
+}
+
+/** A small outline bin, drawn like the tab icons. */
+function binIcon() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  for (const d of ['M4 7h16', 'M9 7V4.5h6V7', 'M6.5 7l1 13h9l1-13', 'M10 11v6M14 11v6']) {
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', d);
+    svg.append(path);
+  }
+  return svg;
 }
 
 /** A row for a saved roster: opens the read-only day-by-day view. */
@@ -371,17 +405,6 @@ function renderOpen(roster, container) {
     el('button', {
       className: 'btn', textContent: 'Next roster',
       onclick: () => rollForward(roster),
-    }),
-    el('button', {
-      className: 'btn btn-danger', textContent: 'Delete',
-      onclick: async () => {
-        const ok = await confirmDialog('Delete roster?', 'This cannot be undone.', 'Delete');
-        if (!ok) return;
-        store.deleteRoster(roster.id);
-        openId = null;
-        toast('Deleted');
-        redraw();
-      },
     }),
   ];
 

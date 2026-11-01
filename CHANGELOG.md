@@ -14,6 +14,12 @@ pull requests, which are linked so the full detail is one click away.
 - In the builder, **Build roster** opens out into **Auto fill** (the scheduler,
   as before) and **Manual fill** (what *Fill in by hand* was). *Send out to
   pick* is now **Offer to staff**.
+- Delete a roster with the bin beside it in the Rosters list. The **Delete**
+  inside an opened roster has gone, leaving **Next roster** there.
+- A shift someone said they can do that is then taken off them (or its day or
+  roster removed) now shows under **Cancelled** on their staff link page until
+  the day passes, instead of just vanishing. The confirms for deleting a roster
+  and removing a shift from a day name anyone who said they can do it.
 - **Next one** is now **Next roster**. It, opening a draft, and choosing a
   roster under **Updates** work again. They had stopped doing anything since
   the Settings tidy-up.

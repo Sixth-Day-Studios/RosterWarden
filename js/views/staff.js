@@ -137,6 +137,21 @@ function shiftList(info, swaps, sent, change) {
   ]);
 }
 
+/**
+ * The "Cancelled" card: shifts they said they could do that have since been
+ * taken off them, so a shift doesn't just vanish from their list. Each stays
+ * until its day has passed. Null when there are none.
+ */
+function cancelledCard(info) {
+  const cancelled = info.cancelled || [];
+  if (!cancelled.length) return null;
+  return el('div', { className: 'notice' }, [
+    el('strong', { textContent: 'Cancelled' }),
+    el('div', { className: 'faint', textContent: `${info.org || 'Whoever does the roster'} took these off you, so you're not needed for them:` }),
+    ...cancelled.map((c) => el('div', { textContent: placeText(c) })),
+  ]);
+}
+
 /** Pick a colleague to ask to take `shift`, and send the ask. Anyone can be asked. */
 async function askSomeone(shift, swaps, sent, change) {
   const chosen = await dialog((close) => [
@@ -522,6 +537,7 @@ export async function render(container, key) {
           + ' The roster changes next time it is opened.',
       }),
     ]) : null,
+    cancelledCard(info),
     askedCard,
     openCard?.node || null,
     shiftsCard,

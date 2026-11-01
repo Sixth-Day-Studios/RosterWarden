@@ -303,6 +303,14 @@ button:focus-visible {
 .item-title { font-weight: 600; }
 .item-sub { font-size: .84rem; color: var(--ink-dim); }
 .item.inactive .item-title { color: var(--ink-faint); text-decoration: line-through; }
+/* A roster in the list with its bin beside it. */
+.item-with-bin { display: flex; gap: .5rem; align-items: stretch; }
+.item-with-bin > .item { flex: 1; min-width: 0; }
+.item-bin { flex: none; width: var(--tap); padding: 0; }
+.item-bin svg {
+  width: 20px; height: 20px; fill: none;
+  stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+}
 /* "Draft" marker on an unbuilt roster in the list. */
 .item-tag {
   flex: none;
