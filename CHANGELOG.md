@@ -6,8 +6,9 @@ pull requests, which are linked so the full detail is one click away.
 
 ## Unreleased
 
-- No more "That sign-in wasn't started on this device" message when you're
-  already signed in, such as after going Back through the sign-in page.
+- Connecting Planning Center works again. Coming back from its sign-in
+  showed "That sign-in wasn't started on this device" and connected nothing,
+  because the RosterWarden account sign-in took the return as its own.
 - **Roster** and **New Roster** are now one **Rosters** tab. **+ New roster**
   at the top of the list opens the builder, and **← Rosters** goes back. With
   no rosters yet, Rosters opens straight on the builder.
@@ -25,6 +26,10 @@ pull requests, which are linked so the full detail is one click away.
 - **Next one** is now **Next roster**. It, opening a draft, and choosing a
   roster under **Updates** work again. They had stopped doing anything since
   the Settings tidy-up.
+- Guardian's face at the top right of the screen opens **Ask Guardian**, so
+  help is one tap from anywhere (it's still in Settings too). Her guide now
+  matches the new Rosters tab, and she can answer how-to questions in a few
+  numbered steps instead of squeezing them into four sentences.
 - The offline copy is now `rosterwarden-v3`, so every installed copy loads the
   new tabs fresh.
 
