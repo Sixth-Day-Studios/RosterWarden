@@ -4,6 +4,22 @@ What changed in RosterWarden, newest first. Dates are when each change reached
 `main`. Entries before 31 October 2026 were written afterwards from the merged
 pull requests, which are linked so the full detail is one click away.
 
+## Unreleased
+
+- **Roster** and **New Roster** are now one **Rosters** tab. **+ New roster**
+  at the top of the list opens the builder, and **← Rosters** goes back. With
+  no rosters yet, Rosters opens straight on the builder.
+- The tabs are hidden on the welcome screen, which every tab used to show
+  again. *Settings and help* at its foot still opens Settings.
+- In the builder, **Build roster** opens out into **Auto fill** (the scheduler,
+  as before) and **Manual fill** (what *Fill in by hand* was). *Send out to
+  pick* is now **Offer to staff**.
+- **Next one** is now **Next roster**. It, opening a draft, and choosing a
+  roster under **Updates** work again. They had stopped doing anything since
+  the Settings tidy-up.
+- The offline copy is now `rosterwarden-v3`, so every installed copy loads the
+  new tabs fresh.
+
 ## 1 November 2026
 
 - Settings has an *Ask Guardian* button above *Help and FAQ*. It opens the

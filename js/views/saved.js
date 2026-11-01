@@ -1,8 +1,8 @@
 /**
- * Roster screen: the rosters you have, and the one place a roster is looked
+ * Rosters screen: the rosters you have, and the one place a roster is looked
  * at and worked on - checked, edited, rebuilt, shared, rolled on to the next
- * one, renamed or deleted. Building on New Roster saves the result and opens
- * it here, so a roster you just built and one from last month behave the same.
+ * one, renamed or deleted. New roster opens the builder, which saves the result
+ * and opens it here, so a roster you just built and one from last month behave the same.
  * Follows the same list-then-detail pattern as the People screen - there is no
  * side-by-side layout on a phone.
  */
@@ -21,6 +21,7 @@ import * as account from '../account.js';
 import { signInButtons } from './account.js';
 import * as staff from '../staff.js';
 import { openUpdates } from './updates.js';
+import { show } from '../app.js';
 
 // Id of the saved roster currently open, or null when showing the list.
 let openId = null;
@@ -30,7 +31,7 @@ let openId = null;
 let editing = false;
 
 /**
- * Open a roster on the next render - used by New Roster straight after a
+ * Open a roster on the next render - used by the builder straight after a
  * build. `edit` starts it in the editor (a roster to fill in by hand).
  */
 export function openRoster(id, { edit = false } = {}) {
@@ -43,15 +44,11 @@ export function render(container) {
   const rosters = store.rosters();
   if (rosters.length === 0) {
     openId = null;
-    // The nudge belongs here too: people and shifts are worth losing even
-    // before a single roster has been saved.
-    fill(container, [...backupNudge(), emptyState(
-      'No rosters yet',
-      'Make one on the New Roster screen and save it — it will show up here.',
-      el('button', {
-        className: 'btn btn-primary', textContent: 'New Roster', onclick: () => show('new'),
-      })
-    )]);
+    // Nothing to list yet, so the builder shows straight away. The nudge
+    // belongs here too: people and shifts are worth losing even before a
+    // single roster has been saved.
+    builderView.render(container);
+    container.prepend(...backupNudge());
     return;
   }
 
@@ -146,7 +143,13 @@ function renderList(rosters, container) {
   ]);
   sort.addEventListener('change', () => { store.setSetting('rosterSort', sort.value); render(container); });
   const items = sorted.map((r) => (r.draft ? draftRow(r) : savedRow(r, container)));
-  return [el('div', { className: 'spread' }, [el('strong', { textContent: 'Rosters' }), sort]), el('div', { className: 'list' }, items)];
+  const newBtn = el('button', {
+    type: 'button', className: 'btn btn-sm btn-primary', textContent: '+ New roster', onclick: () => show('new'),
+  });
+  return [
+    el('div', { className: 'spread' }, [el('strong', { textContent: 'Rosters' }), el('div', { className: 'row-tight' }, [sort, newBtn])]),
+    el('div', { className: 'list' }, items),
+  ];
 }
 
 /** A row for a saved roster: opens the read-only day-by-day view. */
@@ -185,7 +188,7 @@ function draftRow(r) {
 
 /**
  * Start the next roster from this one: the same days of the week, moved on by
- * whole weeks past its last day, picked on New Roster ready to build.
+ * whole weeks past its last day, picked in the builder ready to build.
  */
 function rollForward(roster) {
   const days = rosterDates(roster);
@@ -366,7 +369,7 @@ function renderOpen(roster, container) {
 
   const footer = [
     el('button', {
-      className: 'btn', textContent: 'Next one',
+      className: 'btn', textContent: 'Next roster',
       onclick: () => rollForward(roster),
     }),
     el('button', {

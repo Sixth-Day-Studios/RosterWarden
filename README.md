@@ -21,11 +21,12 @@ Open <https://rosterwarden.sixthdaystudios.com/>, tap **Add to Home Screen**
 (Safari: Share → Add to Home Screen; Chrome: menu → Install app), and it behaves
 like an installed app: full screen, its own icon, and it works with no signal.
 
-Four sections:
+Three sections (hidden on the welcome screen, until there is a workplace):
 
-- **Roster**: your rosters, and everything you do with one: check, edit,
-  rebuild, share, rename. This is what you open it to look at.
-- **New Roster**: the calendar and the Build button, nothing else.
+- **Rosters**: your rosters, and everything you do with one: check, edit,
+  rebuild, share, rename. This is what you open it to look at. **+ New roster**
+  opens the builder: the calendar and the Build button, nothing else. With no
+  rosters yet, the builder is what Rosters shows.
 - **Team**: People, Shifts (with their roles), and Skills, a grid of who can do
   which role.
 - **Settings**, in three groups:
@@ -60,14 +61,14 @@ Four sections:
    ticked). **Copy** duplicates a shift with its roles and days. A roster keeps
    its own copy of each day's shifts when it is built, so changing a shift here
    affects the rosters you build next, not ones already made.
-4. **New Roster**: tap the dates on the calendar, press **Build roster** (always
-   pinned at the foot of the screen). It's saved straight away and opens under
-   **Roster**; there is no separate Save. The "4 people · 2 shifts · Who can do
+4. **Rosters → + New roster**: tap the dates on the calendar, press **Build
+   roster** (always pinned at the foot of the screen), then **Auto fill**. It's
+   saved straight away and opens under **Rosters**; there is no separate Save. The "4 people · 2 shifts · Who can do
    what" buttons open the Team screen over the calendar, so fixing set-up never
    loses your dates. The quick-pick buttons (All open days, Saturdays...) skip
    days already gone; tap a past date yourself if you really want one.
 
-   To choose everyone yourself, press **Fill in by hand** instead: the roster
+   To choose everyone yourself, press **Build roster → Manual fill** instead: the roster
    is saved empty and opens in the editor, with a "+ add" picker on every place
    listing who is free that day and can do the role. **Fill the rest for me**
    keeps everyone you placed (locked) and lets the scheduler fill the gaps fairly.
@@ -103,7 +104,7 @@ A roster you just built and one from months ago open on the same screen and
 can do the same things. **← Rosters**, **Edit** and **Send** are in a bar pinned
 at the foot of the screen (**Edit** reads **Done** while editing, and says
 "Saved": changes already save as you go). **Undo** and **Rebuild** sit under the
-name, **Next one** and **Delete** below the days; tap the name to rename it.
+name, **Next roster** and **Delete** below the days; tap the name to rename it.
 
 - **Things to check** (folded until opened) lists what couldn't be done.
   **Fill the gaps** turns "Drums: short on 2 days" into a picker of who else
@@ -128,11 +129,11 @@ name, **Next one** and **Delete** below the days; tap the name to rename it.
   Center (below).
 - The tally shows shifts and hours per person, and an estimated pay total when
   anyone has a pay rate.
-- **Next one** opens New Roster with the same days moved on by whole weeks,
+- **Next roster** opens the builder with the same days moved on by whole weeks,
   ready to build. Rosters re-check themselves when opened, so someone who is
   now away on a day they're rostered shows up in Things to check.
 - Drafts saved by older versions still show in the list marked "Draft" and
-  open on New Roster; building one replaces it.
+  open in the builder; building one replaces it.
 
 The calendar and the warnings fold away with their arrows. Requests and days
 off starts folded, with what's set shown on its line ("1 asked to work · 2
@@ -181,7 +182,7 @@ Your copy of each key lives in your own (encrypted) data.
 Everything staff send is also written to `store.data.activity` (kept 90 days,
 synced and backed up with the rest): replies to shifts, dates added or removed
 (saying if one clashes with a saved roster), notes, swap asks and answers, and
-changed details. The Roster screen's **Updates** button shows the unseen count
+changed details. The Rosters screen's **Updates** button shows the unseen count
 and opens a sheet, newest first by day, with **Open roster**, **Replace** for a
 "can't do" still on its roster, and **Mark all seen**. The toast that announces
 new news has a **See all** link to the same sheet.
@@ -193,7 +194,7 @@ new news has a **See all** link to the same sheet.
 - **Self swap**: a staff member asks a colleague to take one of their shifts,
   and the colleague's yes hands it over.
 - **Swap with approval**: the colleague's yes then waits for you; **Approve** or
-  **Decline** it in the Shift swaps box on the Roster screen.
+  **Decline** it in the Shift swaps box on the Rosters screen.
 
 While either is on, every staff link page says swaps are on, each upcoming shift
 has **Ask someone to take it**, and asks from colleagues show with Yes and No.
@@ -223,10 +224,10 @@ rosters aren't a clean pattern. The bulk buttons under each month (All open
 days, Saturdays, Weekends...) keep the ordinary case quick; tap a single date to
 switch it off, and tap a bulk button again to clear what it selected.
 
-New Roster starts with the weeks after your latest roster already picked
+The builder starts with the weeks after your latest roster already picked
 (same weekdays, moved on past any weeks already gone, leaving out one-off
 days you aren't normally open), so the usual case is
-just **Build roster**; **Clear** starts from nothing. With nothing picked the
+just **Build roster → Auto fill**; **Clear** starts from nothing. With nothing picked the
 calendar opens on this month, or next month in a month's last 10 days.
 
 **Repeat weekly** carries the first week's pattern forward, by number of weeks
@@ -238,7 +239,7 @@ the later dates back off.
 **Shifts** recur (Team tab); **events** are one-offs on a single day, such as a
 wedding. Under the calendar, **Shifts and events** lists what each picked date
 runs; **Change** opens the same day sheet as Edit on a built roster. Changed
-shifts carry forward to the next weeks (following on, or **Next one**);
+shifts carry forward to the next weeks (following on, or **Next roster**);
 events stay behind. With no regular shifts, Build needs at least one shift or
 event on a picked date. When the days' shifts differ, the spreadsheet and text
 table list one row per date and shift instead of a column per shift.
@@ -309,7 +310,7 @@ encrypted on the device with a random sync code and kept on the server, which
 stores it but cannot read it. There is no code to see or type any more: a
 signed-in **account** keeps the code (`js/account.js`), so a new phone gets
 everything back by signing in. Until someone signs in, the code exists only on
-that device, so the Roster screen asks them to sign in.
+that device, so the Rosters screen asks them to sign in.
 
 There are no export or restore buttons; the sync code and account replace them.
 

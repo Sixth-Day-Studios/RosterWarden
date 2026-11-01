@@ -1,7 +1,7 @@
 /**
- * New Roster screen: pick the dates, then build. That is all it does - the
- * built roster is saved straight away and opens on the Roster screen, the one
- * place a roster is checked, edited, shared and rebuilt.
+ * The builder, opened from the Rosters tab: pick the dates, then build. That
+ * is all it does - the built roster is saved straight away and opens on the
+ * Rosters screen, the one place a roster is checked, edited, shared and rebuilt.
  *
  * This is the most used screen, so the common weekend-cafe case stays quick:
  * "All open days" fills a month in one tap, individual dates can then be
@@ -46,7 +46,7 @@ export function openDraft(id) {
   pendingDraftId = id;
 }
 
-// Dates handed over by another screen ("Next one"), picked on the next render,
+// Dates handed over by another screen ("Next roster"), picked on the next render,
 // and the roster they come from (whose per-day shifts carry over), if any.
 let pendingDates = null;
 let pendingSource = null;
@@ -244,7 +244,7 @@ export function render(container) {
 
   /**
    * Build the roster for the picked dates, save it, and open it. Shifts staff
-   * took from shifts sent out to pick go in first, locked; building on any of
+   * took from shifts offered to staff go in first, locked; building on any of
    * those dates finishes that set, so it leaves their pages.
    */
   const onBuild = () => {
@@ -282,24 +282,24 @@ export function render(container) {
     }
     const before = staff.openShifts();
     const ok = await confirmDialog(
-      'Send these shifts out to pick?',
+      'Offer these shifts to staff?',
       `${people.length === 1 ? '1 person' : `${people.length} people`} with a staff link will see the shifts on these ${dates.length === 1 ? 'date' : `${dates.length} dates`}. `
         + 'The first to take a shift gets it, one a day each, and anyone can say they can\'t do a day. '
         + 'When you build, the shifts taken are locked in and the rest are filled as usual.'
-        + (before ? ' This replaces the shifts you sent out before.' : ''),
-      'Send out',
+        + (before ? ' This replaces the shifts you offered before.' : ''),
+      'Offer',
     );
     if (!ok) return;
     try {
       await staff.sendOpenShifts(dates, dayListsFor(dates));
-      toast('Sent out: they\'ll see them on their links');
+      toast('Offered: they\'ll see them on their links');
     } catch {
       toast('Saved: they\'ll reach their links next time you\'re online');
     }
     render(container);
   };
 
-  /** Build from a set sent out to pick: its dates and shifts, with what's been taken locked in. */
+  /** Build from a set offered to staff: its dates and shifts, with what's been taken locked in. */
   const buildFromOpen = async (open) => {
     try { await staff.refreshClaims(); } catch { /* built from the last check instead */ }
     picked = new Set(open.days);
@@ -347,17 +347,21 @@ export function render(container) {
       })
     );
   } else {
-    buildControl = el('div', { className: 'build-bar' }, [
-      noShiftsHint,
-      errDiv,
-      el('div', { className: 'build-actions' }, [
-        el('button', { type: 'button', className: 'btn', textContent: 'Fill in by hand', onclick: onManual }),
-        staff.openAudience(org.id).length
-          ? el('button', { type: 'button', className: 'btn', textContent: 'Send out to pick', onclick: onSendOut })
-          : null,
-        el('button', { type: 'button', className: 'btn btn-primary', textContent: 'Build roster', onclick: onBuild }),
-      ]),
+    // Build roster opens out into its two ways of filling: by the scheduler
+    // (Auto fill) or by hand (Manual fill). Back closes it again.
+    const actions = el('div', { className: 'build-actions' });
+    const showActions = (choosing) => fill(actions, choosing ? [
+      el('button', { type: 'button', className: 'btn build-back', textContent: '←', 'aria-label': 'Back', onclick: () => showActions(false) }),
+      el('button', { type: 'button', className: 'btn', textContent: 'Manual fill', onclick: onManual }),
+      el('button', { type: 'button', className: 'btn btn-primary', textContent: 'Auto fill', onclick: onBuild }),
+    ] : [
+      staff.openAudience(org.id).length
+        ? el('button', { type: 'button', className: 'btn', textContent: 'Offer to staff', onclick: onSendOut })
+        : null,
+      el('button', { type: 'button', className: 'btn btn-primary', textContent: 'Build roster', onclick: () => showActions(true) }),
     ]);
+    showActions(false);
+    buildControl = el('div', { className: 'build-bar' }, [noShiftsHint, errDiv, actions]);
   }
 
   // Only a draft from an older version needs this; new rosters have no drafts.
@@ -375,6 +379,11 @@ export function render(container) {
     },
   }) : null;
 
+  // Back to the list - unless there is no list yet, when this is the Rosters screen itself.
+  const backBtn = store.rosters().length > 0 ?el('div', { className: 'row-tight' }, [
+    el('button', { type: 'button', className: 'btn btn-sm', textContent: '← Rosters', onclick: () => show('roster') }),
+  ]) : null;
+
   const formCard = el('div', { className: 'card' }, [
     draft ? el('div', { className: 'spread' }, [el('strong', { textContent: draft.name }), deleteDraftBtn]) : null,
     collapsible('dates', 'Dates to roster', calendarWrap, { className: '' }),
@@ -383,11 +392,11 @@ export function render(container) {
   ]);
 
   const open = staff.openShifts();
-  fill(container, [open ? openSection(container, open, buildFromOpen) : null, formCard, planWrap, requestsWrap, buildControl]);
+  fill(container, [backBtn, open ? openSection(container, open, buildFromOpen) : null, formCard, planWrap, requestsWrap, buildControl]);
 }
 
 /**
- * "Shifts sent out to pick": each shift sent out and who took it, who has
+ * "Shifts offered to staff": each shift offered and who took it, who has
  * answered and who hasn't, and buttons to check again, build, or stop.
  */
 function openSection(container, open, buildFrom) {
@@ -414,8 +423,8 @@ function openSection(container, open, buildFrom) {
   ]));
 
   return el('div', { className: 'card' }, [
-    el('strong', { textContent: 'Shifts sent out to pick' }),
-    el('div', { className: 'faint', textContent: `Sent ${formatDate(open.sentAt.slice(0, 10), { withWeekday: false })} · ${taken} of ${slots.length} taken` }),
+    el('strong', { textContent: 'Shifts offered to staff' }),
+    el('div', { className: 'faint', textContent: `Offered ${formatDate(open.sentAt.slice(0, 10), { withWeekday: false })} · ${taken} of ${slots.length} taken` }),
     ...days,
     el('div', {}, [el('strong', { textContent: 'Answered: ' }), yes.length ? names(yes) : 'nobody yet']),
     waiting.length ? el('div', {}, [el('strong', { textContent: 'Not answered yet: ' }), names(waiting)]) : null,

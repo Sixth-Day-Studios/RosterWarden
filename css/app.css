@@ -311,10 +311,12 @@ button:focus-visible {
   background: var(--accent-lo); color: var(--accent);
 }
 
-/* New Roster: "Fill in by hand" and "Build roster" side by side, pinned just
-   above the tab bar so Build is always in reach however long the page is. */
+/* The builder: "Offer to staff" and "Build roster" (which opens out into Manual
+   fill and Auto fill) side by side, pinned just above the tab bar so Build is
+   always in reach however long the page is. */
 .build-actions { display: flex; gap: .5rem; }
 .build-actions > .btn { flex: 1; min-height: 50px; }
+.build-actions > .build-back { flex: 0 0 auto; padding: 0 1rem; }
 .build-bar {
   position: sticky; z-index: 10;
   bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + .5rem);
@@ -447,7 +449,7 @@ pre.roster-text {
 /* ── tab bar ─────────────────────────────────────────────────────────── */
 .tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(3, 1fr);
   background: var(--surface);
   border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom);
@@ -512,6 +514,8 @@ pre.roster-text {
   font: inherit; font-weight: 600; color: var(--accent); text-decoration: underline; text-underline-offset: 3px;
 }
 .staff-mode .tabbar, .staff-mode .org-switch, .staff-mode .account-chip { display: none; }
+/* The welcome screen, before there is a workplace: every tab would show it again. */
+.no-workplace .tabbar { display: none; }
 /* a shift on a staff page with its swap line under it */
 .swap-row { padding: .45rem 0; border-top: 1px solid var(--line); }
 .swap-row:first-of-type { border-top: none; }
@@ -587,7 +591,7 @@ pre.roster-text {
      no `order`, so the bars follow document order. */
   .tabbar {
     position: static; bottom: auto;
-    grid-template-columns: repeat(4, max-content);
+    grid-template-columns: repeat(3, max-content);
     justify-content: center; gap: .3rem;
     border-top: none; border-bottom: 1px solid var(--line);
     padding: .3rem .5rem;
