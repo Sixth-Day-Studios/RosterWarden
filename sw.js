@@ -56,6 +56,7 @@ const SHELL = [
   './js/views/wizard.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './icons/guardian.png',
 ];
 
 for (const entry of SHELL) SHELL_PATHS.add(new URL(entry, self.location).pathname);
