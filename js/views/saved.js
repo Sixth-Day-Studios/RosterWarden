@@ -1,8 +1,8 @@
 /**
- * Roster screen: the rosters you have, and the one place a roster is looked
+ * Rosters screen: the rosters you have, and the one place a roster is looked
  * at and worked on - checked, edited, rebuilt, shared, rolled on to the next
- * one, renamed or deleted. Building on New Roster saves the result and opens
- * it here, so a roster you just built and one from last month behave the same.
+ * one, renamed or deleted. New roster opens the builder, which saves the result
+ * and opens it here, so a roster you just built and one from last month behave the same.
  * Follows the same list-then-detail pattern as the People screen - there is no
  * side-by-side layout on a phone.
  */
@@ -21,6 +21,7 @@ import * as account from '../account.js';
 import { signInButtons } from './account.js';
 import * as staff from '../staff.js';
 import { openUpdates } from './updates.js';
+import { show } from '../app.js';
 
 // Id of the saved roster currently open, or null when showing the list.
 let openId = null;
@@ -30,7 +31,7 @@ let openId = null;
 let editing = false;
 
 /**
- * Open a roster on the next render - used by New Roster straight after a
+ * Open a roster on the next render - used by the builder straight after a
  * build. `edit` starts it in the editor (a roster to fill in by hand).
  */
 export function openRoster(id, { edit = false } = {}) {
@@ -43,15 +44,11 @@ export function render(container) {
   const rosters = store.rosters();
   if (rosters.length === 0) {
     openId = null;
-    // The nudge belongs here too: people and shifts are worth losing even
-    // before a single roster has been saved.
-    fill(container, [...backupNudge(), emptyState(
-      'No rosters yet',
-      'Make one on the New Roster screen and save it — it will show up here.',
-      el('button', {
-        className: 'btn btn-primary', textContent: 'New Roster', onclick: () => show('new'),
-      })
-    )]);
+    // Nothing to list yet, so the builder shows straight away. The nudge
+    // belongs here too: people and shifts are worth losing even before a
+    // single roster has been saved.
+    builderView.render(container);
+    container.prepend(...backupNudge());
     return;
   }
 
@@ -145,8 +142,48 @@ function renderList(rosters, container) {
     el('option', { value: 'oldest', textContent: 'Oldest first', selected: order === 'oldest' }),
   ]);
   sort.addEventListener('change', () => { store.setSetting('rosterSort', sort.value); render(container); });
-  const items = sorted.map((r) => (r.draft ? draftRow(r) : savedRow(r, container)));
-  return [el('div', { className: 'spread' }, [el('strong', { textContent: 'Rosters' }), sort]), el('div', { className: 'list' }, items)];
+  // Each row has its bin beside it: a row is itself a button, so the bin can't go inside it.
+  const items = sorted.map((r) => el('div', { className: 'item-with-bin' }, [
+    r.draft ? draftRow(r) : savedRow(r, container), binButton(r, container),
+  ]));
+  const newBtn = el('button', {
+    type: 'button', className: 'btn btn-sm btn-primary', textContent: '+ New roster', onclick: () => show('new'),
+  });
+  return [
+    el('div', { className: 'spread' }, [el('strong', { textContent: 'Rosters' }), el('div', { className: 'row-tight' }, [sort, newBtn])]),
+    el('div', { className: 'list' }, items),
+  ];
+}
+
+/**
+ * The bin beside a roster in the list: deletes it after asking, naming anyone
+ * who said they can do one of its shifts still to come.
+ */
+function binButton(r, container) {
+  return el('button', {
+    type: 'button', className: 'btn btn-danger item-bin', 'aria-label': `Delete ${r.name}`, title: 'Delete',
+    onclick: async () => {
+      const ok = await confirmDialog(`Delete ${r.name}?`, `This cannot be undone.${staff.cancelWarning(staff.saidYes(r), 'shifts on it')}`, 'Delete');
+      if (!ok) return;
+      store.deleteRoster(r.id);
+      toast('Deleted');
+      render(container);
+    },
+  }, [binIcon()]);
+}
+
+/** A small outline bin, drawn like the tab icons. */
+function binIcon() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  for (const d of ['M4 7h16', 'M9 7V4.5h6V7', 'M6.5 7l1 13h9l1-13', 'M10 11v6M14 11v6']) {
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', d);
+    svg.append(path);
+  }
+  return svg;
 }
 
 /** A row for a saved roster: opens the read-only day-by-day view. */
@@ -185,7 +222,7 @@ function draftRow(r) {
 
 /**
  * Start the next roster from this one: the same days of the week, moved on by
- * whole weeks past its last day, picked on New Roster ready to build.
+ * whole weeks past its last day, picked in the builder ready to build.
  */
 function rollForward(roster) {
   const days = rosterDates(roster);
@@ -366,19 +403,8 @@ function renderOpen(roster, container) {
 
   const footer = [
     el('button', {
-      className: 'btn', textContent: 'Next one',
+      className: 'btn', textContent: 'Next roster',
       onclick: () => rollForward(roster),
-    }),
-    el('button', {
-      className: 'btn btn-danger', textContent: 'Delete',
-      onclick: async () => {
-        const ok = await confirmDialog('Delete roster?', 'This cannot be undone.', 'Delete');
-        if (!ok) return;
-        store.deleteRoster(roster.id);
-        openId = null;
-        toast('Deleted');
-        redraw();
-      },
     }),
   ];
 

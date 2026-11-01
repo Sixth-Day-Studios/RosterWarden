@@ -26,10 +26,10 @@ import * as staffPage from './views/staff.js';
 import { openWizard } from './views/wizard.js';
 import { addShifts, templateShifts, addTemplateRoles } from './setup.js';
 
-// Four sections. "Roster" is the rosters you have saved - the thing you open
-// the app to look at - and "New Roster" is the builder. "Team" is who you
-// roster and what they do (people, shifts and their roles); Settings is the
-// rest: the workplace itself, connections, and the app.
+// Three tabs. "Rosters" is the rosters you have saved - the thing you open the
+// app to look at - and the builder ("new") opens from it, under the same tab.
+// "Team" is who you roster and what they do (people, shifts and their roles);
+// Settings is the rest: the workplace itself, connections, and the app.
 const VIEWS = {
   roster: savedView,
   new: builderView,
@@ -55,15 +55,18 @@ let current = 'roster';
 export function render() {
   const container = document.getElementById('view');
 
-  // Every screen except Settings needs an organisation to act on.
-  if (!store.currentOrg() && current !== 'settings') {
+  // Every screen except Settings needs an organisation to act on. The tabs
+  // hide meanwhile, as all but Settings would only show this screen again.
+  const welcoming = !store.currentOrg() && current !== 'settings';
+  document.body.classList.toggle('no-workplace', welcoming);
+  if (welcoming) {
     fill(container, welcome());
     return;
   }
   VIEWS[current].render(container);
   container.scrollTop = 0;
   // On a phone it is the page that scrolls, not <main>: without this, opening
-  // a roster from the foot of New Roster lands at the foot of the roster.
+  // a roster from the foot of the builder lands at the foot of the roster.
   window.scrollTo(0, 0);
 }
 
@@ -124,6 +127,10 @@ function welcome() {
       ] : []),
       joinErr,
     ] : []),
+    // The tabs are hidden here, so Settings (install, help) gets a way in of its own.
+    el('div', { className: 'or-line' }, [
+      el('button', { type: 'button', className: 'link-btn', textContent: 'Settings and help', onclick: () => show('settings') }),
+    ]),
   ]);
 }
 
@@ -181,8 +188,10 @@ export function show(name, options = {}) {
   if (name === 'team') teamView.openSection(options.section ?? null);
   const direction = Math.sign(TAB_ORDER.indexOf(name) - TAB_ORDER.indexOf(current));
   current = name;
+  // The builder has no tab of its own: it lives under Rosters.
+  const tabName = name === 'new' ? 'roster' : name;
   for (const tab of document.querySelectorAll('.tab')) {
-    const active = tab.dataset.view === name;
+    const active = tab.dataset.view === tabName;
     tab.setAttribute('aria-current', active ? 'page' : 'false');
   }
   if (location.hash !== `#${name}`) {

@@ -333,28 +333,74 @@ function upcomingShifts(person) {
     .slice(0, 60);
 }
 
+/** The shifts on a page that the person has said they can do, as a Cancelled line would show them. */
+function saidYesTo(shifts) {
+  return shifts.filter((s) => s.reply === 'yes')
+    .map(({ ref, date, shift, times, role }) => ({ ref, date, shift, times, role }));
+}
+
 /**
- * Put each person's name, organisation, the dates they gave, and their
- * upcoming shifts on their link page. Only written when something changed.
+ * Shifts a person said they can do that have since gone from their page -
+ * taken off them, or the shift, day or roster removed - kept until the day
+ * passes so their page can say so. A shift they swapped to someone else isn't
+ * one, and one that comes back (an Undo) drops off again.
+ */
+function cancelledFor(person, shifts) {
+  const today = todayISO();
+  const now = new Set(shifts.map((s) => s.ref));
+  const swappedAway = new Set(store.data.swaps
+    .filter((w) => w.fromId === person.id && w.status === 'done').map((w) => placeRef(w.rosterId, w)));
+  const before = person.staffLink.cancelled || [];
+  const gone = (person.staffLink.shownYes || [])
+    .filter((s) => !now.has(s.ref) && !swappedAway.has(s.ref) && !before.some((c) => c.ref === s.ref));
+  return [...before, ...gone].filter((c) => c.date >= today && !now.has(c.ref));
+}
+
+/**
+ * First names of people who said they can do any of these upcoming places on
+ * `roster` (all of its places by default), so a confirm can say who would lose
+ * a shift they agreed to.
+ */
+export function saidYes(roster, places = roster?.assignments || []) {
+  const today = todayISO();
+  const ids = new Set(places
+    .filter((a) => a.date >= today && roster.responses?.[responseKey(a)] === 'C').map((a) => a.personId));
+  return [...ids].map((id) => nameOf(id).split(' ')[0]);
+}
+
+/** " Sam and Ann said they can do it. …" for the end of a confirm, or "" when nobody did. */
+export function cancelWarning(names, what = 'it') {
+  if (!names.length) return '';
+  const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  return ` ${who} said they can do ${what}. Anyone with a staff link will see ${what === 'it' ? 'it' : 'them'} marked cancelled there.`;
+}
+
+/**
+ * Put each person's name, organisation, the dates they gave, their upcoming
+ * shifts, and any they agreed to that were cancelled on their link page. Only
+ * written when something changed.
  */
 export async function publish(ids = null) {
   settleStale();
   for (const p of linked(ids)) {
     const org = store.data.orgs.find((o) => o.id === p.orgId);
+    const shifts = upcomingShifts(p);
+    const cancelled = cancelledFor(p, shifts);
     const content = {
       name: p.name, org: org?.name || '', pco: Boolean(p.pcoId),
       // Hints only, never the email or mobile itself: anyone the link is forwarded to sees this page.
       profile: { name: p.name, emailHint: link.maskEmail(p.email), mobileHint: link.maskMobile(p.phone) },
       // How far this app has read their mailbox, so their page can stop resending details already taken in.
       seenUpTo: p.staffLink.lastFromStaff || null,
-      awayDates: staffDates(p), shifts: upcomingShifts(p), swaps: swapPage(p), open: openPage(p),
+      awayDates: staffDates(p), shifts, cancelled, swaps: swapPage(p), open: openPage(p),
     };
     const fingerprint = shortHash(JSON.stringify(content));
     if (fingerprint === p.staffLink.outHash) continue;
     const { outId, cryptoKey } = await link.boxesFor(p.staffLink.key);
     try {
       await link.writeBox(outId, cryptoKey, content);
-      patchLink(p.id, { outHash: fingerprint });
+      // Only once it's on their page: what they can now see they agreed to, and what it says was cancelled.
+      patchLink(p.id, { outHash: fingerprint, shownYes: saidYesTo(shifts), cancelled });
     } catch (e) {
       if (!(e instanceof link.LinkReplaced)) throw e;
     }

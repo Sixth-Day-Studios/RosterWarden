@@ -10,6 +10,7 @@
 import { store } from '../store.js';
 import { el, fill, toast, confirmDialog, openSheet, TIME_STEP_SECONDS } from '../ui.js';
 import { formatDate, copyDayShifts, rosterDates } from '../scheduler.js';
+import { saidYes, cancelWarning } from '../staff.js';
 
 /** Whole number of 0 or more from a text value, or null when it isn't one. */
 function wholeNumber(raw) {
@@ -29,6 +30,8 @@ export function rosterDaySource(rosterId, save) {
     getLists: () => copyDayShifts(store.roster(rosterId), store.shifts()),
     setLists: save,
     getAssignments: () => store.roster(rosterId).assignments,
+    // Who said they can do these places, for the confirm before taking them off.
+    saidYes: (places) => saidYes(store.roster(rosterId), places),
   };
 }
 
@@ -191,7 +194,8 @@ export function openDayShifts(source, day, onClose) {
         if (here.length) {
           const ok = await confirmDialog(
             'Remove shift',
-            `Take ${here.length} ${here.length === 1 ? 'person' : 'people'} off ${latestOf(entry.id)?.name ?? entry.name} on ${formatDate(day)} too?`,
+            `Take ${here.length} ${here.length === 1 ? 'person' : 'people'} off ${latestOf(entry.id)?.name ?? entry.name} on ${formatDate(day)} too?`
+              + cancelWarning(source.saidYes?.(here) || []),
             'Remove',
           );
           if (!ok) return;
