@@ -24,6 +24,7 @@ import { signInButtons, resumeSignIn } from './views/account.js';
 import { keyFromHash } from './staff-link.js';
 import * as staffPage from './views/staff.js';
 import { openWizard } from './views/wizard.js';
+import { openAskGuardian } from './askguardian.js';
 import { addShifts, templateShifts, addTemplateRoles } from './setup.js';
 
 // Three tabs. "Rosters" is the rosters you have saved - the thing you open the
@@ -339,6 +340,9 @@ function init() {
   refreshAccount();
   // The name in the bar opens Settings, whose last line is the account and Sign out.
   document.getElementById('account-chip').addEventListener('click', () => show('settings'));
+  // Guardian's face in the bar opens the help chat, as Settings > Ask Guardian does.
+  const askBtn = document.getElementById('ask-guardian');
+  askBtn.addEventListener('click', () => openAskGuardian(askBtn));
 
   for (const tab of document.querySelectorAll('.tab')) {
     tab.addEventListener('click', () => show(tab.dataset.view));

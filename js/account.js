@@ -113,10 +113,19 @@ export async function begin(signUp = false) {
   return `${ACCOUNT_URL}/rw/authorize?${q}`;
 }
 
-/** Whether `search` (a page's `location.search`) is the site sending a sign-in back. */
+/**
+ * Whether `search` (a page's `location.search`) is the site sending back the
+ * sign-in this device started. Planning Center comes back with the same
+ * `?code&state`, so the state must match ours or the return is left for it.
+ */
 export function isReturning(search) {
   const q = new URLSearchParams(search);
-  return q.has('code') && q.has('state');
+  if (!q.has('code') || !q.has('state')) return false;
+  try {
+    return JSON.parse(localStorage.getItem(PENDING_KEY) || 'null')?.state === q.get('state');
+  } catch {
+    return false;
+  }
 }
 
 /**

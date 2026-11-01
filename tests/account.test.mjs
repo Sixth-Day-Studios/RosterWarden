@@ -91,13 +91,22 @@ test('an ordinary address is not a sign-in coming back', async () => {
   assert.equal(await account.finish(''), null);
 });
 
-test('a sign-in this device did not start, or one with the wrong state, is refused', async () => {
+test('a return with a state this device did not start is left alone, for Planning Center', async () => {
   setUp();
-  await assert.rejects(account.finish('?code=x&state=y'), /wasn't started on this device/);
+  assert.equal(account.isReturning('?code=x&state=y'), false, 'nothing started here');
+  assert.equal(await account.finish('?code=x&state=y'), null);
   const back = siteSendsBack(await account.begin());
-  await assert.rejects(account.finish(back.replace(/state=[^&]+/, 'state=forged')), /wasn't started/);
-  await assert.rejects(account.finish(back), /wasn't started/, 'the started sign-in is used up by the failed try');
-  assert.equal(account.current(), null);
+  const pco = back.replace(/state=[^&]+/, 'state=planning-center');
+  assert.equal(account.isReturning(pco), false);
+  assert.equal(await account.finish(pco), null);
+  assert.deepEqual(await account.finish(back), { email: 'boss@example.com', name: 'Boss' }, 'our own sign-in still finishes');
+});
+
+test('a stray trip back from the site once signed in is ignored, not an error', async () => {
+  setUp();
+  await signIn();
+  assert.equal(await account.finish('?code=x&state=y'), null);
+  assert.equal(account.current().email, 'boss@example.com');
 });
 
 test('a sign-in that took too long is refused', async () => {
