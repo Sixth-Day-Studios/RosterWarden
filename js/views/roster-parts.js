@@ -103,7 +103,7 @@ function editableRoleRow(roster, people, shift, day, here, roleById, apply) {
       ]);
       select.addEventListener('change', () => {
         const id = Number(select.value);
-        if (id) apply([...roster.assignments, { date: day, shiftId: shift.id, personId: id, roleId: slot.roleId }]);
+        if (id) apply([...roster.assignments, { date: day, shiftId: shift.id, personId: id, roleId: slot.roleId, locked: true }]);
       });
       adder = select;
     }
@@ -165,7 +165,7 @@ export function editableDayCards(roster, people, shifts, apply, onEditDay = null
         select.addEventListener('change', () => {
           const id = Number(select.value);
           if (id) {
-            apply([...roster.assignments, { date: day, shiftId: shift.id, personId: id }]);
+            apply([...roster.assignments, { date: day, shiftId: shift.id, personId: id, locked: true }]);
           }
         });
         adder = select;
@@ -464,7 +464,7 @@ function openMessages(roster, people, shifts) {
         ]),
         el('div', { className: 'row-tight' }, [
           person.phone ? link('Text', `sms:${person.phone}?&body=${encodeURIComponent(text)}`) : null,
-          person.email ? link('Email', `mailto:${person.email}?subject=${encodeURIComponent(roster.name)}&body=${encodeURIComponent(text)}`) : null,
+          person.email ? link('Email', `mailto:${encodeURIComponent(person.email).replace(/%40/g, '@')}?subject=${encodeURIComponent(roster.name)}&body=${encodeURIComponent(text)}`) : null,
           el('button', {
             className: 'btn btn-sm', textContent: navigator.share ? 'Share' : 'Copy',
             onclick: () => (navigator.share ? shareText(roster.name, text) : copyText(text)),
@@ -552,9 +552,9 @@ async function emailEveryone(roster, people, shifts) {
       }),
       el('p', {
         className: 'faint',
-        textContent: "Your rosters are encrypted, so our server can't read them. To send these, each person's "
-          + "message goes to our server and our email service as plain text. We don't keep it; the email service "
-          + 'keeps a copy of sent emails for a short while, as any email service does.',
+        textContent: 'Your rosters are encrypted before they leave this phone. Emails can\'t be: to send these, each '
+          + "person's message goes to our server and our email service as plain text. We don't keep it; the email "
+          + 'service keeps a copy of sent emails for a short while, as any email service does.',
       }),
       err,
       el('div', { className: 'modal-actions' }, [

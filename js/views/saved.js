@@ -292,7 +292,7 @@ function renderOpen(roster, container) {
   const remember = () => {
     if (undo.id !== roster.id) { undo.id = roster.id; undo.stack = []; }
     const now = store.roster(roster.id);
-    undo.stack.push({ assignments: now.assignments, dayShifts: now.dayShifts, days: now.days });
+    undo.stack.push({ assignments: now.assignments, dayShifts: now.dayShifts, days: now.days, byHand: now.byHand });
   };
 
   /**
@@ -387,6 +387,8 @@ function renderOpen(roster, container) {
         store.updateRoster(roster.id, {
           assignments: prev.assignments, dayShifts: prev.dayShifts,
           days: prev.days, startDate: days[0], endDate: days[days.length - 1],
+          // Put back whether it was filled by hand (older snapshots lack the field).
+          ...('byHand' in prev ? { byHand: prev.byHand } : {}),
           notes: auditRoster({ ...roster, ...prev }, store.people(), store.shifts(), store.roles()),
         });
         redraw();

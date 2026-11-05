@@ -182,8 +182,9 @@ good while keeping their dates.
 
 The key is in the link after the `#`, which browsers never send to a server.
 What they enter, and the name and shifts on their page, are encrypted with it
-and stored in two small mailboxes on the sync worker, which can't read them.
-Your copy of each key lives in your own (encrypted) data.
+and stored in two small mailboxes on the sync worker, which can't read them on
+its own. Your copy of each key lives in your own (encrypted) data, so these are
+exactly as private as your rosters (see Accounts and sync).
 
 ### Updates from staff
 
@@ -314,13 +315,29 @@ This is a public static site: anything in it can be read by anyone.
 ## Accounts and sync
 
 **Sync** is on by itself when a sync server is configured: your data is
-encrypted on the device with a random sync code and kept on the server, which
-stores it but cannot read it. There is no code to see or type any more: a
+encrypted on the device with a random sync code and kept on the sync server,
+which stores only that locked copy. There is no code to see or type any more: a
 signed-in **account** keeps the code (`js/account.js`), so a new phone gets
-everything back by signing in. Until someone signs in, the code exists only on
-that device, so the Rosters screen asks them to sign in.
+everything back by signing in. That also means Sixth Day Studios, which runs
+both the account server and the sync server, could unlock a signed-in owner's
+rosters (it never does), and the app and help guide say so. Until someone signs
+in, the code exists only on that device, so nobody else can read the data and
+the Rosters screen asks them to sign in. Deleting the account removes the kept
+code; signing out does not.
 
 There are no export or restore buttons; the sync code and account replace them.
+
+Two devices on the same rosters never silently overwrite each other. Each
+upload says which copy it last saw (`base`), and the worker refuses it (409) if
+another device has saved since. When both changed things, the app asks **Keep
+this device's** or **Use the other device's** and uploads nothing until the
+choice is made. Changes are judged by whether a stamp is the one last agreed,
+not by which is later, so a device with a wrong clock can't fool it. The app
+checks again each time it comes back on screen.
+
+Deleting a person or a workplace (and Delete all data) switches their staff
+links off on the server first. With sync on, Delete all data empties every
+device sharing the rosters and the account's copy, and the confirm says so.
 
 ## The scheduler
 
@@ -351,7 +368,8 @@ silent gap.
 **Settings → AI assist** turns pasted messages into ticked days, away dates and
 clash pairs for you to approve. Names it doesn't recognise are thrown away. It
 never decides who works when. Supported: Gemini, Anthropic and OpenAI; the key is
-stored on this device only (fine for a personal phone, not a shared one).
+stored on this device only (fine for a personal phone, not a shared one): in its
+own localStorage entry, never in the synced data.
 
 ## Running it locally
 

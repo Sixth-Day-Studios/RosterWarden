@@ -11,4 +11,7 @@ Thumbs.db
 
 # Wrangler (Cloudflare) local cache, wherever it gets run from
 .wrangler/
-dist/
+
+# Worker secrets for wrangler dev: never commit these
+.env
+.dev.vars

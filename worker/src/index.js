@@ -12,7 +12,8 @@
  *
  * Sync endpoints:
  *   GET  /db/:id  ->  { ciphertext, iv, updatedAt }   (404 if never written)
- *   PUT  /db/:id  <-  { ciphertext, iv, updatedAt }
+ *   PUT  /db/:id  <-  { ciphertext, iv, updatedAt, base? }
+ *                     with `base`, 409 { updatedAt } if the stored copy is no longer the one stamped `base`
  *
  * `:id` is a 64-character hex SHA-256 derived from the user's secret. It is
  * unguessable, and it is NOT the encryption key - see js/sync.js.
@@ -105,8 +106,26 @@ const EMAIL_TEXT_MAX = 4000;
 /** The daily email count SQL, named like BOX_SQL for the tests' stand-in database. */
 export const EMAIL_SQL = {
   read: 'SELECT sent FROM email_sends WHERE account = ? AND day = ?',
-  add: 'INSERT INTO email_sends (account, day, sent) VALUES (?, ?, ?) '
-    + 'ON CONFLICT(account, day) DO UPDATE SET sent = email_sends.sent + excluded.sent',
+  // Count a send before it goes, and only if it still fits under the day's limit. One statement, so two
+  // sends at the same moment can't both read "room left" and then both go out.
+  reserve: 'INSERT INTO email_sends (account, day, sent) VALUES (?, ?, ?) '
+    + 'ON CONFLICT(account, day) DO UPDATE SET sent = email_sends.sent + excluded.sent '
+    + 'WHERE email_sends.sent + excluded.sent <= ?',
+  // Give back a send the email service refused, so it doesn't count against the day.
+  release: 'UPDATE email_sends SET sent = MAX(sent - ?, 0) WHERE account = ? AND day = ?',
+};
+
+/** The synced database SQL, named like BOX_SQL for the tests' stand-in database. */
+export const BLOB_SQL = {
+  read: 'SELECT ciphertext, iv, updated_at FROM blobs WHERE id = ?',
+  write: 'INSERT INTO blobs (id, ciphertext, iv, updated_at) VALUES (?, ?, ?, ?) '
+    + 'ON CONFLICT(id) DO UPDATE SET ciphertext = excluded.ciphertext, '
+    + 'iv = excluded.iv, updated_at = excluded.updated_at',
+  // The same, but only over the copy the device last saw (its `base` stamp): if another device saved in
+  // between, nothing is written and the device is told, instead of its copy silently replacing that work.
+  writeOver: 'INSERT INTO blobs (id, ciphertext, iv, updated_at) VALUES (?, ?, ?, ?) '
+    + 'ON CONFLICT(id) DO UPDATE SET ciphertext = excluded.ciphertext, '
+    + 'iv = excluded.iv, updated_at = excluded.updated_at WHERE blobs.updated_at = ?',
 };
 
 /** A plain email address, with nothing that could add a header. */
@@ -373,12 +392,16 @@ async function emailRoster(request, env, origin) {
   const title = headerText(body.title, 120);
   const replyTo = EMAIL_PATTERN.test(body.replyTo || '') ? body.replyTo : owner.email;
 
-  // The daily cap, counted under a hash of the account's email rather than the email itself.
+  // The daily cap, counted under a hash of the account's email rather than the email itself. The send is
+  // counted first, in one statement that refuses it if it won't fit, so sends at the same moment can't
+  // between them go over the limit; one the email service then refuses is given back.
   const account = await tokenHash(owner.email.toLowerCase());
   const day = new Date().toISOString().slice(0, 10);
-  const row = await env.DB.prepare(EMAIL_SQL.read).bind(account, day).first();
-  const left = DAILY_EMAILS - (row?.sent || 0);
-  if (messages.length > left) {
+  const reserved = messages.length <= DAILY_EMAILS
+    && (await env.DB.prepare(EMAIL_SQL.reserve).bind(account, day, messages.length, DAILY_EMAILS).run())?.meta?.changes > 0;
+  if (!reserved) {
+    const row = await env.DB.prepare(EMAIL_SQL.read).bind(account, day).first();
+    const left = Math.max(DAILY_EMAILS - (row?.sent || 0), 0);
     return json({
       error: left > 0
         ? `You can send ${left} more email${left === 1 ? '' : 's'} today, and this is ${messages.length}. Try again tomorrow.`
@@ -396,18 +419,15 @@ async function emailRoster(request, env, origin) {
       text: m.text + footer,
     })));
   } catch (e) {
+    await env.DB.prepare(EMAIL_SQL.release).bind(messages.length, account, day).run();
     return json({ error: `The email service refused: ${e.message}` }, 502, origin);
   }
-  await env.DB.prepare(EMAIL_SQL.add).bind(account, day, messages.length).run();
   return json({ sent: messages.length }, 200, origin);
 }
 
 /** Return the stored blob for `id`, or 404 if there has never been one. */
 async function read(id, env, origin) {
-  const row = await env.DB
-    .prepare('SELECT ciphertext, iv, updated_at FROM blobs WHERE id = ?')
-    .bind(id)
-    .first();
+  const row = await env.DB.prepare(BLOB_SQL.read).bind(id).first();
 
   if (!row) return json({ error: 'No data for that code' }, 404, origin);
   return json({ ciphertext: row.ciphertext, iv: row.iv, updatedAt: row.updated_at }, 200, origin);
@@ -422,7 +442,7 @@ async function write(id, request, env, origin) {
     return json({ error: 'Body must be JSON' }, 400, origin);
   }
 
-  const { ciphertext, iv, updatedAt } = body || {};
+  const { ciphertext, iv, updatedAt, base } = body || {};
   if (typeof ciphertext !== 'string' || typeof iv !== 'string') {
     return json({ error: 'ciphertext and iv are required' }, 400, origin);
   }
@@ -430,17 +450,19 @@ async function write(id, request, env, origin) {
     return json({ error: 'Too large' }, 413, origin);
   }
 
-  // Last write wins. Two devices editing the same data offline will clobber
-  // each other; `updatedAt` is stored so the app can at least notice and warn.
   const stamp = typeof updatedAt === 'string' ? updatedAt : new Date().toISOString();
-  await env.DB
-    .prepare(
-      'INSERT INTO blobs (id, ciphertext, iv, updated_at) VALUES (?, ?, ?, ?) '
-      + 'ON CONFLICT(id) DO UPDATE SET ciphertext = excluded.ciphertext, '
-      + 'iv = excluded.iv, updated_at = excluded.updated_at'
-    )
-    .bind(id, ciphertext, iv, stamp)
-    .run();
+  // With `base` (the stamp of the copy the device last agreed with), the write only lands if nobody else
+  // saved since: two devices open at once must not silently wipe each other's work. Without it (apps from
+  // before this check), last write wins as it always did.
+  if (typeof base === 'string') {
+    const result = await env.DB.prepare(BLOB_SQL.writeOver).bind(id, ciphertext, iv, stamp, base).run();
+    if (!(result?.meta?.changes > 0)) {
+      const row = await env.DB.prepare(BLOB_SQL.read).bind(id).first();
+      return json({ error: 'Changed on another device', updatedAt: row?.updated_at ?? null }, 409, origin);
+    }
+  } else {
+    await env.DB.prepare(BLOB_SQL.write).bind(id, ciphertext, iv, stamp).run();
+  }
 
   return json({ ok: true, updatedAt: stamp }, 200, origin);
 }
@@ -493,6 +515,11 @@ async function pcoToken(request, env, origin, grantType) {
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    // Planning Center down or rate-limiting is a bad moment, not a refusal: answered 502 so the app keeps
+    // its tokens and tries again, where a 4xx would sign the device out of Planning Center.
+    if (res.status >= 500 || res.status === 429) {
+      return json({ error: 'Planning Center is busy or down. Try again in a moment.' }, 502, origin);
+    }
     // Pass Planning Center's own reason on; it is the useful part of the error.
     const reason = data.error_description || data.error || `HTTP ${res.status}`;
     return json({ error: `Planning Center refused the sign-in: ${reason}` }, 400, origin);

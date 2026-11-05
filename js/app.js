@@ -7,7 +7,7 @@
  * which is enough for three sections and keeps the back button working.
  */
 import { store } from './store.js';
-import { el, fill, promptText, toast, closeSheet } from './ui.js';
+import { el, fill, promptText, toast, closeSheet, dialog } from './ui.js';
 
 import * as builderView from './views/roster.js';
 import * as savedView from './views/saved.js';
@@ -336,6 +336,9 @@ function init() {
     clearTimeout(staffPublishTimer);
     staffPublishTimer = setTimeout(() => staff.publish().catch(() => {}), 5000);
   });
+  // A save that couldn't be written is otherwise silent, and everything since is lost when the app closes.
+  store.onSaveFailed(() => toast('Couldn\'t save on this device: its storage is full or blocked. '
+    + 'Changes since will be lost when the app closes.'));
   refreshOrgs();
   refreshAccount();
   // The name in the bar opens Settings, whose last line is the account and Sign out.
@@ -352,9 +355,12 @@ function init() {
     if (keyFromHash(location.hash)) { location.reload(); return; }
     show(location.hash.slice(1));
   });
-  // Coming back to the app is a good moment to look for dates staff have sent.
+  // A background upload that finds another device saved first asks which copy to keep.
+  sync.onConflict(chooseCopy);
+  // Coming back to the app is a good moment to catch up with another device, and to look for dates staff
+  // have sent. A phone can keep the app open for days, so this is not left to the next cold start.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') collectStaff();
+    if (document.visibilityState === 'visible') startSync();
   });
   // And every couple of minutes while it stays open on screen, so a reply shows up without leaving the app.
   setInterval(() => {
@@ -392,17 +398,59 @@ async function finishPlanningCenterSignIn() {
  * request completes - least of all on a bad connection.
  */
 async function startSync() {
-  const result = await sync.reconcile(store.data, (serverData) => {
-    store.replaceAll(serverData);
-    refreshOrgs();
-    render();
-  });
+  const result = await sync.reconcile(store.data, takeServerCopy);
 
   if (result.action === 'downloaded') toast('Updated from your other device');
-  if (result.action === 'conflict') {
-    toast('This and another device both changed things — kept what is on this one');
-  }
+  if (result.action === 'conflict') await chooseCopy();
   collectStaff();
+}
+
+/** Show the server's copy of the data in place of this device's. */
+function takeServerCopy(serverData) {
+  store.replaceAll(serverData);
+  refreshOrgs();
+  render();
+}
+
+// True while the "which copy?" question is on screen, so it is never asked twice at once.
+let choosingCopy = false;
+
+/**
+ * This device and another both changed things since they last matched: ask
+ * which copy to keep. Nothing uploads until they choose, so neither is lost
+ * meanwhile; dismissing it asks again next time the app opens or comes back.
+ */
+async function chooseCopy() {
+  if (choosingCopy) return;
+  choosingCopy = true;
+  let again = false;
+  try {
+    const keepThis = await dialog((close) => [
+      el('h2', { textContent: 'Changed on two devices' }),
+      el('p', {
+        className: 'muted',
+        textContent: 'This device and another one both changed your rosters since they last matched. '
+          + 'Which copy do you want to keep? The other one is replaced.',
+      }),
+      el('div', { className: 'modal-actions' }, [
+        el('button', { className: 'btn', textContent: 'Use the other device\'s', onclick: () => close(false) }),
+        el('button', { className: 'btn btn-primary', textContent: 'Keep this device\'s', onclick: () => close(true) }),
+      ]),
+    ]);
+    if (keepThis === null) {
+      toast('Not syncing until you choose. You\'ll be asked again when you come back.');
+      return;
+    }
+    await sync.resolveConflict(keepThis, store.data, takeServerCopy);
+    toast(keepThis ? 'Kept this device\'s copy' : 'Now showing the other device\'s copy');
+  } catch (err) {
+    // Yet another save landed meanwhile: ask again with that one in view.
+    if (err instanceof sync.SyncConflict) again = true;
+    else toast(err.message);
+  } finally {
+    choosingCopy = false;
+  }
+  if (again) await chooseCopy();
 }
 
 // Debounce timer for refreshing staff link pages after a save.

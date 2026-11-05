@@ -133,6 +133,11 @@ export async function finishSignIn() {
   sessionStorage.removeItem(VERIFIER_KEY);
   history.replaceState(null, '', redirectUri() + location.hash);
 
+  // A stray return from the other sign-in (the Sixth Day account) has no UUID-shaped
+  // state and nothing is pending here: ignore it quietly.
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!expected && !UUID.test(params.get('state') || '')) return null;
+
   if (error) return 'cancelled';
   if (!expected || !verifier || params.get('state') !== expected) {
     throw new PCOError('That Planning Center sign-in did not start here. Try connecting again.');

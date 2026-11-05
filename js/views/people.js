@@ -403,6 +403,18 @@ function renderEditor(id, container) {
     onclick: async () => {
       const ok = await confirmDialog('Delete person', `Remove ${person.name}? This cannot be undone.`);
       if (!ok) return;
+      // Switch their staff link off while its key is still here, so their page stops showing old shifts.
+      try {
+        await staff.retireLinks([person.id]);
+      } catch {
+        const anyway = await confirmDialog(
+          'Staff link still on',
+          `The server couldn't be reached, so ${person.name}'s staff link will keep showing their old shifts. `
+            + 'Delete them anyway, or wait until you\'re online?',
+          'Delete anyway'
+        );
+        if (!anyway) return;
+      }
       store.deletePerson(person.id);
       toast('Person deleted');
       back();
@@ -615,7 +627,7 @@ function renderStaffLinkCard(person, container) {
   const send = [
     person.email ? el('a', {
       className: 'btn btn-sm', textContent: 'Email', onclick: () => sent('email'),
-      href: `mailto:${person.email}?subject=${encodeURIComponent('Your availability link')}&body=${encodeURIComponent(text)}`,
+      href: `mailto:${encodeURIComponent(person.email).replace(/%40/g, '@')}?subject=${encodeURIComponent('Your availability link')}&body=${encodeURIComponent(text)}`,
     }) : null,
     person.phone ? el('a', {
       className: 'btn btn-sm', textContent: 'Text', onclick: () => sent('text'),
@@ -631,7 +643,7 @@ function renderStaffLinkCard(person, container) {
   ];
 
   const sentLine = sl.sentAt
-    ? `Sent ${formatDate(sl.sentAt.slice(0, 10), { withWeekday: false })} by ${sl.sentVia}`
+    ? `Sent ${formatDate(todayISO(new Date(sl.sentAt)), { withWeekday: false })} by ${sl.sentVia}`
     : 'Not sent yet';
   const heard = sl.lastFromStaff
     ? `Last updated from their link: ${new Date(sl.lastFromStaff).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`

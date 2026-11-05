@@ -20,8 +20,9 @@ const SHELL_PATHS = new Set();
 
 /** Everything needed to boot the app with no network. */
 const SHELL = [
+  // './' and not './index.html': the host redirects /index.html to /, and a
+  // redirected copy can't answer a page load.
   './',
-  './index.html',
   './manifest.webmanifest',
   './css/app.css',
   './js/app.js',
@@ -38,6 +39,7 @@ const SHELL = [
   './js/askguardian.js',
   './js/views/roster.js',
   './js/views/roster-parts.js',
+  './js/views/day-shifts.js',
   './js/views/planning-center.js',
   './js/sources/planning-center.js',
   './js/views/people.js',
@@ -54,8 +56,11 @@ const SHELL = [
   './js/views/account.js',
   './js/views/settings.js',
   './js/views/wizard.js',
+  './icons/icon-180.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './icons/icon-512-maskable.png',
+  './icons/favicon.ico',
   './icons/guardian.png',
 ];
 
@@ -63,8 +68,8 @@ for (const entry of SHELL) SHELL_PATHS.add(new URL(entry, self.location).pathnam
 
 /**
  * Whether two responses for the same URL are different builds of that file.
- * GitHub Pages sends a strong ETag (and Last-Modified) on every asset, so a
- * header comparison is enough - no need to read and diff the bodies.
+ * The host sends an ETag (or Last-Modified) on every asset, so a header
+ * comparison is enough - no need to read and diff the bodies.
  */
 function isNewerCopy(cached, fresh) {
   const tag = (r, h) => r && r.headers.get(h);
@@ -77,6 +82,26 @@ function isNewerCopy(cached, fresh) {
 async function notifyShellUpdated() {
   const clients = await self.clients.matchAll({ type: 'window' });
   for (const client of clients) client.postMessage('shell-updated');
+}
+
+/** The shell refresh under way, if any, so a deploy noticed by several requests at once is fetched once. */
+let refreshing = null;
+
+/**
+ * A deploy has landed: fetch every shell file fresh, put them all in the
+ * cache, and only then tell the pages to reload. Reloading as soon as the
+ * first changed file was seen could run a new file beside an old one it
+ * imports, which fails to load and leaves a blank screen. addAll stores all
+ * or nothing, so a failed refresh leaves the old set whole, and no reload.
+ */
+function refreshShell(cache) {
+  if (!refreshing) {
+    refreshing = cache.addAll(SHELL.map((u) => new Request(new URL(u, self.location), { cache: 'no-cache' })))
+      .then(notifyShellUpdated)
+      .catch(() => { /* offline or a file missing: keep the old set, try again next launch */ })
+      .finally(() => { refreshing = null; });
+  }
+  return refreshing;
 }
 
 self.addEventListener('install', (event) => {
@@ -107,24 +132,32 @@ self.addEventListener('fetch', (event) => {
   // so the next open has the latest. Plain cache-first would mean a forgotten
   // CACHE bump silently pins every installed copy to an old version forever -
   // the wrong failure mode for an app nobody is watching over.
+  // The background refresh below outlives the response, so the worker is asked to stay up until it is done.
+  let backgroundDone;
+  if (event.waitUntil) event.waitUntil(new Promise((resolve) => { backgroundDone = resolve; }));
+
   event.respondWith(
     caches.open(CACHE).then(async (cache) => {
       const hit = await cache.match(request);
 
       const network = fetch(request)
-        .then((response) => {
+        .then(async (response) => {
           if (response.ok && response.type === 'basic') {
             // A shell file whose bytes changed under us means a deploy has
-            // landed. Let the running pages reload onto it rather than waiting
-            // for the next cold start.
+            // landed: bring the whole shell up to date, then let the running
+            // pages reload onto it rather than waiting for the next cold start.
             if (hit && SHELL_PATHS.has(url.pathname) && isNewerCopy(hit, response)) {
-              notifyShellUpdated();
+              await refreshShell(cache);
+            } else if (!url.search) {
+              // Not an address with a query: a sign-in coming back (?code=…) is
+              // used once and would only pile up in the cache.
+              await cache.put(request, response.clone());
             }
-            cache.put(request, response.clone());
           }
           return response;
         })
-        .catch(() => null);
+        .catch(() => null)
+        .finally(() => backgroundDone?.());
 
       if (hit) return hit;
 
@@ -134,7 +167,7 @@ self.addEventListener('fetch', (event) => {
       // Offline with nothing cached: a navigation still gets the shell, which
       // is enough for this single-page app to render.
       if (request.mode === 'navigate') {
-        return (await cache.match('./index.html')) || Response.error();
+        return (await cache.match('./')) || Response.error();
       }
       return Response.error();
     })

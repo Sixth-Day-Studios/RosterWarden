@@ -85,8 +85,20 @@ test('sign-in sends a PKCE challenge, then swaps the code with its verifier', as
   assert.equal(pco.isConnected(), true);
 
   // A second return trip with no matching state is refused.
-  location.search = '?code=xyz&state=forged';
+  location.search = '?code=xyz&state=11111111-2222-3333-4444-555555555555';
   await assert.rejects(pco.finishSignIn(), pco.PCOError);
+});
+
+test('a stray return from the other sign-in is ignored quietly when none is pending here', async () => {
+  globalThis.sessionStorage = new MemoryStorage();
+  globalThis.location = {
+    origin: 'https://example.test', pathname: '/RosterWarden/', search: '', hash: '',
+    assign: () => {},
+  };
+  globalThis.history = { replaceState: () => {} };
+  // A Sixth Day sign-in state: 22 base64url characters, nothing like a UUID.
+  location.search = '?code=x&state=abcdefghijklmnopqrstuv';
+  assert.equal(await pco.finishSignIn(), null);
 });
 
 test('disconnect forgets the tokens and asks the worker to revoke them', async () => {

@@ -10,6 +10,16 @@ key never leaves it.
 That is the point. Hosting other people's staff names and availability would
 make you responsible for them. Hosting ciphertext you cannot decrypt does not.
 
+One caveat: a signed-in owner's account on sixthdaystudios.com keeps their sync
+code (so a new phone can sign in instead of typing it). The worker alone can't
+read anything, but whoever runs both the account server and this worker could.
+
+A device's upload (`PUT /db/:id`) carries `base`, the stamp of the copy it last
+saw. If another device has saved since, the write is refused with `409` and the
+stamp now stored, so two devices can't silently overwrite each other; the app
+then asks which copy to keep. An upload with no `base` (an older app) still
+replaces what is there.
+
 It also keeps the **staff availability link** mailboxes (`/box/:id`, `/boxes`,
 table `mailboxes` in `schema.sql`): two small encrypted boxes per staff member,
 keyed by ids made from the key in their link. Same rule: it stores them and
@@ -65,7 +75,9 @@ workplace's business email (or the owner's account email).
 
 Guards: the bearer token must be a signed-in owner (checked against
 `ACCOUNT_URL/api/rw/me` on the account server), each account can send
-`DAILY_EMAILS` (100) a day, at most 100 in one send, one address per email,
+`DAILY_EMAILS` (100) a day (counted before sending, in one statement, so sends
+at the same moment can't add up to more; a send the email service refuses is
+given back), at most 100 in one send, one address per email,
 plain text only, and header fields are stripped of anything that could add a
 header. The server can't read rosters, so it can't check the addresses are the
 roster's people: the app picks them from the roster.

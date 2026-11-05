@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildRoster, auditRoster, shiftsOn, shiftOn, rosterShiftList, runsOn, copyDayShifts, carryDayShifts,
+  shiftsSnapshot,
 } from '../js/scheduler.js';
 import { rosterLines, formatMessage, hoursByPerson, messageFor } from '../js/export.js';
 
@@ -172,6 +173,22 @@ test('carryDayShifts carries a day with no shifts, and nothing from a roster wit
   assert.deepEqual(carryDayShifts(source, ['2026-06-08'], usual), { '2026-06-08': [] });
   assert.deepEqual(carryDayShifts({ days: [D1] }, ['2026-06-08'], usual), {});
   assert.deepEqual(carryDayShifts(source, ['2026-06-09'], usual), {});   // no Tuesday in the source
+});
+
+test('a shift changed on the Team tab reaches the next roster; a day changed by hand still carries', () => {
+  // Built when Cafe ran 08:00-12:00. Monday was then changed by hand to start at 07:00; Tuesday was left alone.
+  const then = shiftsSnapshot(usual);
+  const built = buildRoster({ orgId: 1, name: 't', people, shifts: usual, clashes: [], dates: [D1, D2] });
+  const source = {
+    ...built, usualShifts: then,
+    dayShifts: { ...built.dayShifts, [D1]: [{ ...built.dayShifts[D1][0], start: '07:00' }] },
+  };
+  // Since then, on the Team tab: Cafe starts at 09:00, and there is a Lunch shift too.
+  const now = [{ ...usual[0], start: '09:00' }, { id: 11, name: 'Lunch', start: '12:00', end: '15:00', headcount: 2 }];
+  const carried = carryDayShifts(source, ['2026-06-08', '2026-06-09'], now);
+  // Tuesday was just the usual shifts of its time, so it gets today's (nothing carried); Monday keeps its 07:00.
+  assert.deepEqual(Object.keys(carried), ['2026-06-08']);
+  assert.equal(carried['2026-06-08'][0].start, '07:00');
 });
 
 test('carryDayShifts leaves events behind: they are one-offs', () => {

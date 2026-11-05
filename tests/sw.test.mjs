@@ -23,9 +23,12 @@ function loadWorker({ cached, network }) {
   const listeners = {};
   const posted = [];
 
+  const added = [];
   const cacheStub = {
     match: async () => cached,
     put: async () => {},
+    // Records each whole-shell refresh: the list of addresses it fetched.
+    addAll: async (requests) => { added.push(requests.map((r) => r.url ?? r)); },
   };
   const scope = {
     location: new URL('sw.js', SCOPE),
@@ -46,7 +49,7 @@ function loadWorker({ cached, network }) {
   // eslint-disable-next-line no-new-func
   new Function(src)();
 
-  return { listeners, posted };
+  return { listeners, posted, added };
 }
 
 /** A Response-like object with just the headers the worker inspects. */
@@ -63,12 +66,15 @@ function fakeResponse(etag) {
 async function requestOnce(worker, path) {
   let settled;
   const done = new Promise((r) => { settled = r; });
+  let background = Promise.resolve();
   worker.listeners.fetch({
     request: { method: 'GET', url: SCOPE + path, mode: 'no-cors' },
     respondWith: (p) => settled(p),
+    waitUntil: (p) => { background = p; },
   });
   await done;
-  // Let the background fetch().then() microtasks run.
+  // Let the background refresh finish, as the browser keeps the worker up for it.
+  await background;
   await new Promise((r) => setTimeout(r, 0));
 }
 
@@ -106,4 +112,38 @@ test('the first fetch of an uncached shell file says nothing', async () => {
   });
   await requestOnce(worker, 'js/app.js');
   assert.deepEqual(worker.posted, []);
+});
+
+test('a deploy noticed on one file refreshes the whole shell before the page is told', async () => {
+  const worker = loadWorker({
+    cached: fakeResponse('"old"'),
+    network: fakeResponse('"new"'),
+  });
+  await requestOnce(worker, 'js/views/saved.js');
+  // Every shell file was fetched again, together, before 'shell-updated' went out.
+  assert.equal(worker.added.length, 1);
+  assert.ok(worker.added[0].some((u) => u.endsWith('/js/store.js')));
+  assert.deepEqual(worker.posted, ['shell-updated']);
+});
+
+/** Every module the app loads, found by following static imports from js/app.js. */
+function importGraph() {
+  const seen = new Set();
+  const walk = (file) => {
+    if (seen.has(file.href)) return;
+    seen.add(file.href);
+    const src = readFileSync(file, 'utf8');
+    for (const m of src.matchAll(/^\s*import\s+(?:[^'"]*?\sfrom\s+)?['"](\.{1,2}\/[^'"]+)['"]/gm)) walk(new URL(m[1], file));
+  };
+  walk(new URL('../js/app.js', import.meta.url));
+  const root = new URL('../', import.meta.url).href;
+  return [...seen].map((href) => href.slice(root.length));
+}
+
+test('every module the app imports is in the offline shell', () => {
+  const src = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+  const shell = new Set([...src.matchAll(/'\.\/([^']+)'/g)].map((m) => m[1]));
+  const missing = importGraph().filter((f) => !shell.has(f));
+  // A module left out loads online but leaves the app blank on its first launch with no signal.
+  assert.deepEqual(missing, []);
 });
