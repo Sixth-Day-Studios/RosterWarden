@@ -146,6 +146,13 @@ test('a refused refresh signs the device out with a readable error', async () =>
   assert.equal(pco.isConnected(), false);
 });
 
+test("the sync worker's rate limit (429) during refresh keeps the device signed in", async () => {
+  signIn(-10);
+  routes = () => reply({ error: 'Too many requests from this connection. Try again in a minute.' }, 429);
+  await assert.rejects(pco.listTeams(), pco.PCOError);
+  assert.equal(pco.isConnected(), true);
+});
+
 test('a dropped connection during refresh keeps the device signed in', async () => {
   signIn(-10);
   routes = () => { throw new TypeError('Failed to fetch'); };

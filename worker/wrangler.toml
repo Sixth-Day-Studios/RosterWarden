@@ -1,6 +1,9 @@
 # Cloudflare Worker that stores each device's encrypted RosterWarden database.
 #
-# Deploy:  npx wrangler deploy      (see README.md for first-time setup)
+# Deploy, from this folder (after `npm ci` once at the repo root, which installs the pinned wrangler):
+#   npx --no-install wrangler deploy --config wrangler.toml
+# Always pass --config: without it, wrangler can pick up the app's config instead and redeploy the app.
+# See README.md for first-time setup.
 
 name = "rosterwarden-sync"
 main = "src/index.js"
@@ -13,15 +16,26 @@ binding = "DB"
 database_name = "rosterm8"   # the D1 database keeps its original name; only its id matters
 database_id = "c9f30187-1580-417f-a6e0-12b6c45cca3c"
 
+# Rate limit per client (an IP address, or an IPv6 /64), counted in each Cloudflare location. None of the
+# endpoints need signing in, so this stops one client flooding the free plan's daily quota or filling the
+# database. 600 a minute is far past real use: an owner's app checks staff links every 2 minutes, saves
+# a few seconds after each change, and publishing or replacing links is one request per person (two to
+# retire a link), so even a 250-person workplace's "Delete all data" fits in one minute.
+# namespace_id is any number unique to this Cloudflare account: workers sharing one share counts.
+[[ratelimits]]
+name = "RATE_LIMIT"
+namespace_id = "2611"
+simple = { limit = 600, period = 60 }
+
 # Planning Center sign-in. The client id is public (it also sits in js/config.js);
 # the secret is NOT kept here - set it once with:
-#   npx wrangler secret put PCO_CLIENT_SECRET
+#   npx --no-install wrangler secret put PCO_CLIENT_SECRET --config wrangler.toml
 [vars]
 PCO_CLIENT_ID = "6dc7467984d3076ce47c59207e55cdbe0c652518ff890d44ef36351bdc2fe054"
 
 # Emailing rosters (POST /email). The account server checks the owner's sign-in;
 # EMAIL_FROM must be an address on a domain verified with Resend. The API key is
 # NOT kept here - set it once with:
-#   npx wrangler secret put RESEND_API_KEY
+#   npx --no-install wrangler secret put RESEND_API_KEY --config wrangler.toml
 ACCOUNT_URL = "https://sixthdaystudios.com"
 EMAIL_FROM = "rosters@sixthdaystudios.com"

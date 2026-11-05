@@ -1,8 +1,13 @@
 # Response headers for every file of the app, applied by Cloudflare's static assets (wr.py ships this file).
-# Nothing here limits what the app itself loads: the page is never shown inside another site's frame, the
-# browser doesn't guess file types, and other sites are told only this origin, never a full address.
+# The page is never shown inside another site's frame, the browser doesn't guess file types, and other sites
+# are told only this origin, never a full address.
+#
+# Content-Security-Policy: the app runs only its own scripts and styles (no inline code; el() sets styles
+# through element.style, which the policy allows), and talks only to: the sync worker (js/config.js), Planning
+# Center's API, the account server and Ask Guardian (sixthdaystudios.com), and the three AI providers
+# (js/ai.js). Adding a new outside service means adding its origin here, or the browser blocks it.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
-  Content-Security-Policy: frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self' https://rosterwarden-sync.mikey-257.workers.dev https://api.planningcenteronline.com https://sixthdaystudios.com https://generativelanguage.googleapis.com https://api.anthropic.com https://api.openai.com; frame-src https://sixthdaystudios.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
