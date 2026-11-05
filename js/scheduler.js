@@ -322,9 +322,28 @@ export function carryDayShifts(sourceRoster, newDates, usual) {
     const from = have.filter((d) => d < date && (toDays(date) - toDays(d)) % 7 === 0).pop();
     if (from === undefined) continue;
     const copy = JSON.parse(JSON.stringify(lists[from].filter((e) => !e.event)));
+    // A day that was just the usual shifts of the time the source was built is not a change to carry: the
+    // usual shifts as they are now go in instead, so a shift changed on the Team tab since reaches the new
+    // roster. (A roster from before `usualShifts` was kept can't tell, so it carries any difference.)
+    if (sourceRoster.usualShifts) {
+      const usualThen = usualDayShifts(sourceRoster.usualShifts, [from])[from];
+      if (JSON.stringify(copy) === JSON.stringify(usualThen)) continue;
+    }
     if (JSON.stringify(copy) !== JSON.stringify(usualLists[date])) out[date] = copy;
   }
   return out;
+}
+
+/**
+ * A copy of the usual shifts as they are now, for a new roster to keep as
+ * `usualShifts`, so carrying its days on later can tell a day changed by hand
+ * from one that was simply the usual shifts of its time (see carryDayShifts).
+ */
+export function shiftsSnapshot(shifts) {
+  return shifts.map(({ id, name, start, end, headcount, roles, days }) => ({
+    id, name, start, end, headcount, roles: (roles || []).map((r) => ({ ...r })),
+    ...(Array.isArray(days) ? { days: [...days] } : {}),
+  }));
 }
 
 /** How far back (in days) a saved roster still counts towards who is due a turn. */
@@ -334,14 +353,15 @@ const HISTORY_DAYS = 90;
  * Choose the fairest eligible person for one vacancy, or null if there is none.
  * `roleOk` narrows the pool to people who can do the role being filled.
  */
-function pick(day, people, usedToday, placedIds, incompatible, worked, lastWorked, roleOk = () => true, bias = new Map()) {
+function pick(day, people, usedToday, placedIds, incompatible, worked, lastWorked, roleOk = () => true, bias = new Map(), ahead = new Map()) {
   const eligible = people.filter(
     (p) =>
       !usedToday.has(p.id) &&                                  // not already on today
       canWork(p, day) &&                                       // availability + blackouts
       roleOk(p) &&                                             // can do this role
       ![...(incompatible.get(p.id) || [])].some((id) => placedIds.has(id)) && // no clash
-      (p.maxShifts == null || worked.get(p.id) < p.maxShifts)
+      // A max-shifts cap counts their locked places still to come (`ahead`) as already taken.
+      (p.maxShifts == null || worked.get(p.id) + (ahead.get(p.id) || 0) < p.maxShifts)
   );
   if (eligible.length === 0) return null;
 
@@ -416,14 +436,19 @@ export function buildRoster({
       : 'No rostered days fall in the selected date range.');
     return roster;
   }
+  // Nothing can be filled in the next two cases, but places the user locked are still kept: a rebuild with
+  // everyone paused must not quietly empty the roster.
+  const keepLocked = () => locked.filter((a) => days.includes(a.date)).map((a) => ({ ...a, locked: true }));
   if (days.every((d) => shiftsOn(roster, d, shifts).length === 0)) {
     roster.notes.push(shifts.length
       ? 'None of your shifts run on the dates picked.'
       : 'This organisation has no shifts set up.');
+    roster.assignments = keepLocked();
     return roster;
   }
   if (roll.length === 0) {
     roster.notes.push('No active people to roster.');
+    roster.assignments = keepLocked();
     return roster;
   }
 
@@ -437,6 +462,10 @@ export function buildRoster({
   // 90 days before the first day count (HISTORY_DAYS), and `worked` itself stays this
   // roster's own tally, which is what a person's max-shifts limit is checked against.
   const bias = new Map();
+  // Each person's locked places on days not yet reached. They count against a max-shifts cap from the start:
+  // otherwise the days before a locked place could fill someone up, and the locked place then puts them over.
+  const ahead = new Map();
+  for (const a of locked) if (days.includes(a.date)) ahead.set(a.personId, (ahead.get(a.personId) || 0) + 1);
   const first = toDays(days[0]);
   for (const a of history) {
     const d = toDays(a.date);
@@ -455,6 +484,7 @@ export function buildRoster({
     const pinned = locked.filter((a) => a.date === day);
     for (const a of pinned) {
       usedToday.add(a.personId);
+      ahead.set(a.personId, ahead.get(a.personId) - 1);
       if (worked.has(a.personId)) {
         worked.set(a.personId, worked.get(a.personId) + 1);
         lastWorked.set(a.personId, toDays(day));
@@ -499,7 +529,7 @@ export function buildRoster({
       for (let k = 0; k < slots.length; k++) {
         const roleOk = (p) => canDoRole(p, slots[k].roleId, roleById);
         while (remaining[k] > 0) {
-          const who = pick(day, roll, usedToday, placedIds, incompatible, worked, lastWorked, roleOk, bias);
+          const who = pick(day, roll, usedToday, placedIds, incompatible, worked, lastWorked, roleOk, bias, ahead);
           if (!who) break;
           place(who, k);
 
@@ -508,7 +538,7 @@ export function buildRoster({
           for (const mateId of who.withIds || []) {
             const mate = roll.find((p) => p.id === mateId);
             if (!mate || usedToday.has(mate.id) || !canWork(mate, day)) continue;
-            if (mate.maxShifts != null && worked.get(mate.id) >= mate.maxShifts) continue;
+            if (mate.maxShifts != null && worked.get(mate.id) + (ahead.get(mate.id) || 0) >= mate.maxShifts) continue;
             if ([...(incompatible.get(mate.id) || [])].some((id) => placedIds.has(id))) continue;
             const t = slots.findIndex((s, j) => remaining[j] > 0 && canDoRole(mate, s.roleId, roleById));
             if (t >= 0) place(mate, t);

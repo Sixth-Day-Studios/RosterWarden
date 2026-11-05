@@ -48,3 +48,30 @@ test('new people have no frequency, week or pay settings', () => {
   const p = fresh().addPerson('Amy');
   assert.deepEqual([p.minGapWeeks, p.weeksOfMonth, p.phone, p.hourlyRate], [null, [], '', null]);
 });
+
+test('a save the device refuses (storage full) is reported, not silent', () => {
+  const s = fresh();
+  const failures = [];
+  s.onSaveFailed((err) => failures.push(err.name));
+  globalThis.localStorage.setItem = () => { const e = new Error('full'); e.name = 'QuotaExceededError'; throw e; };
+  s.addPerson('Zed');
+  s.onSaveFailed(null);
+  assert.deepEqual(failures, ['QuotaExceededError']);
+});
+
+test('the AI key stays on this device: never in the synced data', () => {
+  const s = fresh();
+  s.setSetting('aiKey', 'sk-test');
+  assert.equal(s.setting('aiKey'), 'sk-test');
+  assert.ok(!('aiKey' in s.data.settings), 'not in what is synced');
+  assert.ok(!JSON.stringify(s.data).includes('sk-test'));
+});
+
+test('an AI key synced by an older version is moved out of the synced data', () => {
+  const s = fresh();
+  s.data.settings.aiKey = 'sk-old';
+  assert.equal(s.setting('aiKey'), 'sk-old');
+  assert.ok(!('aiKey' in s.data.settings));
+  s.reset();
+  assert.equal(s.setting('aiKey'), '', 'Delete all data forgets it too');
+});

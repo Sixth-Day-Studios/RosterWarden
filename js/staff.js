@@ -96,10 +96,21 @@ function listDates(dates) {
 export function staffDates(person) {
   const out = [];
   for (const b of person.blackouts || []) {
-    if (b.source !== SOURCE) continue;
+    // A malformed date (taken in before dates were checked) is skipped: stepping on from it would throw.
+    if (b.source !== SOURCE || !isRealDate(b.start) || !isRealDate(b.end)) continue;
     for (let d = b.start; d <= b.end; d = nextDay(d)) out.push(d);
   }
   return [...new Set(out)].sort();
+}
+
+/** Whether `d` is a real "YYYY-MM-DD" date: "2026-13-45" and "2026-02-30" are not. */
+function isRealDate(d) {
+  return typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && fromDays(toDays(d)) === d;
+}
+
+/** `value` if it is text, else '': what a staff page sends is checked, never trusted to be the right shape. */
+function textOf(value) {
+  return typeof value === 'string' ? value : '';
 }
 
 /** The ISO date after `iso`. */
@@ -159,13 +170,15 @@ export async function replaceLink(personId) {
 }
 
 /**
- * Cancel every staff link on the server, before Delete all data forgets their
- * keys. Otherwise the old pages stay up showing old shifts and quietly take
- * answers nobody will ever read; cancelled, they say the link was replaced.
- * Throws when the server can't be reached.
+ * Cancel the staff links of the people with these ids (everyone's, given
+ * none) on the server, before deleting them forgets their keys: Delete all
+ * data, deleting a person or a workplace. Otherwise the old pages stay up
+ * showing old shifts and quietly take answers nobody will ever read;
+ * cancelled, they say the link was replaced. Throws when the server can't be
+ * reached.
  */
-export async function retireAllLinks() {
-  for (const p of linked()) {
+export async function retireLinks(ids = null) {
+  for (const p of linked(ids)) {
     const { inId, outId } = await link.boxesFor(p.staffLink.key);
     await link.replaceBox(inId);
     await link.replaceBox(outId);
@@ -177,9 +190,9 @@ export function clearStaffDates(personId) {
   store.replaceSourcedBlackouts(personId, SOURCE, []);
 }
 
-/** Only well-formed ISO dates, de-duplicated and sorted, at most 400. */
+/** Only real ISO dates, de-duplicated and sorted, at most 400. */
 function cleanDates(list) {
-  return [...new Set((Array.isArray(list) ? list : []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)))]
+  return [...new Set((Array.isArray(list) ? list : []).filter(isRealDate))]
     .sort().slice(0, 400);
 }
 
@@ -204,17 +217,24 @@ export async function collect(ids = null) {
     const box = boxes.get(keys.get(p.id).inId);
     if (!box || box.replaced) continue;
     if (p.staffLink.lastFromStaff && box.updatedAt <= p.staffLink.lastFromStaff) continue;
-    takeSwaps(p, box.value);
-    takeReplies(p, box.value);
-    takeProfile(p, box.value);
-    takeOpenReply(p, box.value);
-    const before = staffDates(p);
-    const dates = cleanDates(box.value?.awayDates);
-    store.replaceSourcedBlackouts(p.id, SOURCE, dates.map((d) => ({ start: d, end: d, reason: 'from their link' })));
-    const note = String(box.value?.note || '').slice(0, NOTE_MAX);
-    logDateChanges(p, before, dates, p.staffLink.note, note);
-    patchLink(p.id, { lastFromStaff: box.updatedAt, note });
-    changed.push(store.data.people.find((x) => x.id === p.id));
+    try {
+      takeSwaps(p, box.value);
+      takeReplies(p, box.value);
+      takeProfile(p, box.value);
+      takeOpenReply(p, box.value);
+      const before = staffDates(p);
+      const dates = cleanDates(box.value?.awayDates);
+      store.replaceSourcedBlackouts(p.id, SOURCE, dates.map((d) => ({ start: d, end: d, reason: 'from their link' })));
+      const note = textOf(box.value?.note).slice(0, NOTE_MAX);
+      logDateChanges(p, before, dates, p.staffLink.note, note);
+      patchLink(p.id, { lastFromStaff: box.updatedAt, note });
+      changed.push(store.data.people.find((x) => x.id === p.id));
+    } catch (err) {
+      // One page sending something that can't be taken in must not stop everyone after them being read.
+      // That send is passed over; their next one is read as usual.
+      console.warn('Could not take in what %s sent through their link.', p.name, err);
+      patchLink(p.id, { lastFromStaff: box.updatedAt });
+    }
   }
   return changed;
 }
@@ -240,13 +260,19 @@ const NAME_MAX = 80;
 const EMAIL_MAX = 120;
 const MOBILE_MAX = 25;
 
+/**
+ * A plain email address. Nothing that means something in a mailto: link (? & # % ,) or a header (< > " ;):
+ * this address goes into the owner's Email buttons, where "sam@x.com?bcc=…" would add hidden recipients.
+ */
+const PLAIN_EMAIL = /^[^\s@?&#%,;<>"/\\]+@[^\s@?&#%,;<>"/\\]+\.[^\s@?&#%,;<>"/\\]+$/;
+
 /** Their details as sent, tidied: blank where missing or malformed (an email must look like one). */
 function cleanProfile(value) {
-  const text = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
+  const text = (v) => textOf(v).replace(/\s+/g, ' ').trim();
   const email = text(value?.email).slice(0, EMAIL_MAX);
   return {
     name: text(value?.name).slice(0, NAME_MAX),
-    email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : '',
+    email: PLAIN_EMAIL.test(email) ? email : '',
     mobile: text(value?.mobile).replace(/[^0-9+()\- ]/g, '').trim().slice(0, MOBILE_MAX),
   };
 }
@@ -582,7 +608,7 @@ function takeSwaps(person, value) {
       if (mode === 'off' || store.data.swaps.some((w) => w.id === ask.id)) continue;
       // Anyone active in the same workplace, whatever their availability.
       const to = store.data.people.find((p) => p.id === ask.toId && p.orgId === person.orgId && p.id !== person.id && p.active && hasLink(p));
-      const found = findPlace(person, String(ask.ref || ''));
+      const found = findPlace(person, textOf(ask.ref));
       if (!to || !found) continue;
       const { roster, place } = found;
       // One ask at a time for any one place.
@@ -634,7 +660,7 @@ function takeReplies(person, value) {
   const replies = Array.isArray(value?.shiftReplies) ? value.shiftReplies.slice(0, 200) : [];
   for (const r of replies) {
     if (typeof r?.yes !== 'boolean') continue;
-    const found = findPlace(person, String(r.ref || ''));
+    const found = findPlace(person, textOf(r.ref));
     if (!found) continue;
     const { roster, place } = found;
     const key = responseKey(place);
@@ -802,7 +828,7 @@ export async function refreshClaims() {
     slots.forEach((s, i) => {
       const c = found.get(ids[i]);
       const person = c && byOf.get(c.by);
-      if (person) claims.push({ ref: s.ref, personId: person.id, name: pickName(person), at: String(c.value?.at || '') });
+      if (person) claims.push({ ref: s.ref, personId: person.id, name: pickName(person), at: textOf(c.value?.at) });
     });
     const next = settleClaims(claims);
     for (const s of slots) {

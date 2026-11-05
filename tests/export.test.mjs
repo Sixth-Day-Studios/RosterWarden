@@ -188,3 +188,35 @@ test('toCSV keeps the person-per-row layout when every day runs the same shifts'
   const same = { ...roster, dayShifts: { '2026-10-11': shifts, '2026-10-18': shifts } };
   assert.equal(toCSV(same, people, shifts).split('\r\n')[0], '\uFEFFDate,Day,Shift,Start,End,Person');
 });
+
+test('toCSV prefixes names that would run as spreadsheet formulas, and leaves ordinary ones', () => {
+  const folks = [
+    { id: 1, name: '=HYPERLINK("http://evil","x")' }, { id: 2, name: '@SUM(A1)' }, { id: 3, name: 'Sarah' },
+  ];
+  const r = {
+    ...roster,
+    assignments: [
+      { date: '2026-10-11', shiftId: 10, personId: 1 },
+      { date: '2026-10-11', shiftId: 10, personId: 2 },
+      { date: '2026-10-11', shiftId: 10, personId: 3 },
+    ],
+  };
+  const csv = toCSV(r, folks, shifts);
+  assert.ok(csv.includes(`,"'=HYPERLINK(""http://evil"",""x"")"`));
+  assert.ok(csv.includes(`,'@SUM(A1)`));
+  assert.ok(csv.includes(',Sarah'));
+  assert.ok(!csv.includes(`'Sarah`));
+});
+
+test('formatPerPerson keeps two different people with the same name apart', () => {
+  const sams = [{ id: 1, name: 'Sam' }, { id: 2, name: 'Sam' }];
+  const r = {
+    ...roster,
+    assignments: [
+      { date: '2026-10-11', shiftId: 10, personId: 1 },
+      { date: '2026-10-18', shiftId: 10, personId: 2 },
+    ],
+  };
+  const sam = formatPerPerson(r, sams, shifts).split('\n').filter((l) => l.startsWith('Sam:'));
+  assert.equal(sam.length, 2);
+});

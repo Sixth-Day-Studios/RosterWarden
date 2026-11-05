@@ -16,7 +16,7 @@ ENV_FILE = r"Y:\Guardian\.env"
 ACCOUNT_ID = "257d47d170c46772026c2f5ae2562514"   # same account as sixthdaystudios.com (not a secret)
 
 # Exactly what the app needs, and nothing else (no sync worker, tests or tooling).
-APP_FILES = ["index.html", "manifest.webmanifest", "sw.js", "css", "js", "icons"]
+APP_FILES = ["index.html", "manifest.webmanifest", "sw.js", "_headers", "css", "js", "icons"]
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 

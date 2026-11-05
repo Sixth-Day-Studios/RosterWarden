@@ -92,9 +92,17 @@ function emptyData() {
     activity: [],
     // Shifts sent out for staff to take before building (see js/open-shifts.js).
     openShifts: [],
-    settings: { aiProvider: 'gemini', aiModel: '', aiKey: '' },
+    settings: { aiProvider: 'gemini', aiModel: '' },
   };
 }
+
+/**
+ * Settings kept on this device only, in their own localStorage entries and
+ * never in the synced data: an AI key is a secret for this phone ("stored on
+ * this device only", Settings says), and syncing it would put it on every
+ * device that shares these rosters.
+ */
+const DEVICE_SETTINGS = { aiKey: 'rosterwarden.ai.key' };
 
 /** Monotonic-ish id generator; unique within this device, which is all we need. */
 let idSeed = Date.now();
@@ -158,6 +166,9 @@ export const store = {
       localStorage.setItem(KEY, JSON.stringify(this.data));
     } catch (err) {
       console.error('Could not save.', err);
+      // Nothing else checks for this, so whoever listens (the app) tells the person: the change is only in
+      // memory and will be gone when the app closes.
+      try { this._onSaveFailed?.(err); } catch { /* the warning itself failed; nothing more to do */ }
       return false;
     }
     // Tell whoever is listening (the sync layer) that the data moved on. Kept
@@ -173,6 +184,11 @@ export const store = {
   /** Register a single listener called after every successful save. */
   onSaved(fn) {
     this._onSaved = fn;
+  },
+
+  /** Register a single listener called when a save could not be written (storage full or blocked). */
+  onSaveFailed(fn) {
+    this._onSaveFailed = fn;
   },
 
   /**
@@ -676,13 +692,34 @@ export const store = {
   // --------------------------------------------------------------- settings --
   /** Read a setting. */
   setting(key) {
-    return this.data.settings[key];
+    const local = DEVICE_SETTINGS[key];
+    if (!local) return this.data.settings[key];
+    let mine = '';
+    try { mine = localStorage.getItem(local) || ''; } catch { /* storage blocked: none kept */ }
+    // One saved by an older version sits in the synced data: take it out of the sync, keeping it here
+    // unless this device already has its own.
+    if (key in this.data.settings) {
+      mine = mine || this.data.settings[key] || '';
+      this.setSetting(key, mine);
+    }
+    return mine;
   },
 
-  /** Write a setting. */
+  /** Write a setting (a device-only one to its own entry, see DEVICE_SETTINGS). */
   setSetting(key, value) {
-    this.data.settings[key] = value;
-    this.save();
+    const local = DEVICE_SETTINGS[key];
+    if (!local) {
+      this.data.settings[key] = value;
+      this.save();
+      return;
+    }
+    try {
+      if (value) localStorage.setItem(local, value); else localStorage.removeItem(local);
+    } catch { /* storage blocked: the key just isn't kept */ }
+    if (key in this.data.settings) {
+      delete this.data.settings[key];
+      this.save();
+    }
   },
 
   // ------------------------------------------------------- backup / restore --
@@ -749,6 +786,10 @@ export const store = {
   /** Wipe everything on this device. Used by Settings > Delete all data. */
   reset() {
     this.data = emptyData();
+    // Device-only settings (the AI key) go too: they are part of "all data" on this device.
+    for (const local of Object.values(DEVICE_SETTINGS)) {
+      try { localStorage.removeItem(local); } catch { /* storage blocked: nothing kept */ }
+    }
     this.save();
   },
 };

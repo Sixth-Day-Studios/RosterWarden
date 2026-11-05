@@ -231,7 +231,7 @@ function openShiftsCard(open, linkKey, today, away, hooks) {
     held = new Map();
     for (const s of slots) {
       const c = found.get(ids.get(s.ref));
-      if (c) held.set(s.ref, { name: c.value?.name || 'someone', mine: c.by === me.by });
+      if (c) held.set(s.ref, { name: (typeof c.value?.name === 'string' && c.value.name.trim().slice(0, 40)) || 'someone', mine: c.by === me.by });
     }
   };
 

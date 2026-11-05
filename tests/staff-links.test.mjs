@@ -113,6 +113,49 @@ test('clearing takes away only the dates from their link', async () => {
   assert.deepEqual(store.people()[0].blackouts.map((b) => b.start), ['2026-12-25']);
 });
 
+test('a date that is not a real date is ignored, and staff sync carries on', async () => {
+  const sam = setUp();
+  await staff.createLink(sam.id);
+  // A tampered page: before dates were checked, "2026-13-45" was kept and every sync after it threw.
+  await staffSends(store.people()[0].staffLink.key, ['2026-13-45', '2026-02-30', '2026-11-08']);
+  await staff.syncStaff();
+  assert.deepEqual(staff.staffDates(store.people()[0]), ['2026-11-08']);
+  await staff.syncStaff();
+});
+
+test('a bad date already kept from before is skipped rather than breaking their page', () => {
+  const sam = setUp();
+  store.replaceSourcedBlackouts(sam.id, staff.SOURCE, [{ start: '2026-13-45', end: '2026-13-45', reason: 'from their link' }]);
+  assert.deepEqual(staff.staffDates(store.people()[0]), []);
+});
+
+test('one person sending the wrong shape of data does not stop everyone after them being read', async () => {
+  setUp();
+  const bob = store.addPerson('Bob Green');
+  const sam = store.people().find((p) => p.name === 'Sam Jones');
+  await staff.createLink(sam.id);
+  await staff.createLink(bob.id);
+  const poison = { toString: 1, valueOf: 1 };   // String() of this throws
+  const { inId, cryptoKey } = await link.boxesFor(store.people().find((p) => p.id === sam.id).staffLink.key);
+  await link.writeBox(inId, cryptoKey, {
+    awayDates: [poison], note: poison, profile: { name: poison, email: poison }, shiftReplies: [{ ref: poison, yes: true }],
+  });
+  await staffSends(store.people().find((p) => p.id === bob.id).staffLink.key, ['2026-11-08']);
+
+  await staff.syncStaff();
+  assert.deepEqual(staff.staffDates(store.people().find((p) => p.id === bob.id)), ['2026-11-08']);
+  // Making Sam a new link works too (it reads their mailbox first).
+  await staff.replaceLink(sam.id);
+});
+
+test('an email with mailto: extras in it is not taken in', async () => {
+  const sam = setUp();
+  await staff.createLink(sam.id);
+  await staffSendsProfile(store.people()[0].staffLink.key, { name: 'Sam Jones', email: 'sam@x.com?cc=boss%40evil.example&body=Pay%20here&z=.y', mobile: '' });
+  await staff.syncStaff();
+  assert.equal(store.people()[0].email || '', '');
+});
+
 test('a new away date that clashes with a saved roster is found', async () => {
   const sam = setUp();
   const shift = store.addShift({ name: 'Wedding', start: '10:00', end: '16:00', headcount: 1 });
@@ -258,4 +301,17 @@ test('a link key that is already taken is never reused', async () => {
   } finally { crypto.getRandomValues = real; }
   assert.equal(forced, false, 'the collision was really forced');
   assert.notEqual(named('Ann Lee').staffLink.key, taken);
+});
+
+test('switching off one person\'s link leaves everyone else\'s working', async () => {
+  setUp();
+  const bob = store.addPerson('Bob Green');
+  const sam = store.people().find((p) => p.name === 'Sam Jones');
+  await staff.createLink(sam.id);
+  await staff.createLink(bob.id);
+  const keyOf = (id) => store.people().find((p) => p.id === id).staffLink.key;
+  // What deleting Sam does first, so their page stops showing old shifts.
+  await staff.retireLinks([sam.id]);
+  await assert.rejects(staffSends(keyOf(sam.id), ['2026-11-08']), link.LinkReplaced);
+  await staffSends(keyOf(bob.id), ['2026-11-08']);
 });

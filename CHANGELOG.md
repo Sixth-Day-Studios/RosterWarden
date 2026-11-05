@@ -36,6 +36,53 @@ pull requests, which are linked so the full detail is one click away.
   not two.
 - The offline copy is now `rosterwarden-v3`, so every installed copy loads the
   new tabs fresh.
+- Two devices on the same rosters no longer overwrite each other. If both
+  changed things since they last matched (both open at once, or one offline),
+  RosterWarden asks which copy to keep, **Keep this device's** or **Use the
+  other device's**, and uploads nothing until you choose. Before, the last to
+  save silently replaced the other's work. Coming back to the app now picks up
+  the other device's changes straight away, and a phone whose clock is wrong
+  can't make a newer copy look older.
+- **Next roster** and the builder's follow-on weeks use your current shifts. A
+  shift changed on the Team tab after a roster was built kept coming back on
+  every roster after it; now only days you changed by hand carry forward.
+- A staff link that sent something malformed (a date like 13/45, or the wrong
+  kind of data) stopped dates, replies and swaps arriving from everyone after
+  that person, and broke their page in the app. It is now ignored, and
+  everyone else's still comes through.
+- An email sent from a staff link's Your details with extra parts in it (such
+  as `?bcc=`) is refused, and the Email buttons can't be given hidden
+  recipients.
+- Someone with a max shifts limit is no longer put over it when they have a
+  locked place later in the roster, and a rebuild with nobody active keeps the
+  locked places instead of emptying the roster.
+- People added with **+ add** in Edit are locked, as other hand-made changes
+  are, so **Rebuild around locked** keeps them, and Undo restores a hand-filled
+  roster properly.
+- Deleting a person or a workplace switches off their staff links, as Delete
+  all data already did, so an old page stops showing their shifts.
+- **Delete all data** now says plainly that, with sync on, it empties every
+  device sharing these rosters and your account's copy, not just this one.
+- Dismissing "Which rosters do you want?" after signing in no longer replaces
+  the rosters your account keeps; it changes nothing.
+- The AI key really is kept on this device only. It was being synced to your
+  other devices; it is now taken out of the synced copy, and Delete all data
+  forgets it.
+- If this device can't save (its storage is full or blocked), it says so
+  instead of losing the changes silently when the app closes.
+- The app works offline on its first launch after installing: one of its files
+  was missing from the offline copy. An update now fetches all of its files
+  before reloading, so it can't start with a mix of old and new ones.
+- Planning Center being down or busy no longer signs you out of it, and a
+  stray return from the account sign-in no longer shows a Planning Center
+  error.
+- The daily limit of 100 roster emails can't be got around by sending several
+  at once.
+- Spreadsheet exports can't run a name as a formula, two people with the same
+  name stay apart in "Each person's shifts", "Build from these" can't build
+  twice from a double tap, and dates shown as "Offered" or "Sent" use your
+  own time zone.
+- The site now tells browsers never to show it inside another site's frame.
 
 ## 1 November 2026
 

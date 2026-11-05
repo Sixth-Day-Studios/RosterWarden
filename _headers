@@ -1,0 +1,8 @@
+# Response headers for every file of the app, applied by Cloudflare's static assets (wr.py ships this file).
+# Nothing here limits what the app itself loads: the page is never shown inside another site's frame, the
+# browser doesn't guess file types, and other sites are told only this origin, never a full address.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'

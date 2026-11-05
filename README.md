@@ -322,6 +322,18 @@ that device, so the Rosters screen asks them to sign in.
 
 There are no export or restore buttons; the sync code and account replace them.
 
+Two devices on the same rosters never silently overwrite each other. Each
+upload says which copy it last saw (`base`), and the worker refuses it (409) if
+another device has saved since. When both changed things, the app asks **Keep
+this device's** or **Use the other device's** and uploads nothing until the
+choice is made. Changes are judged by whether a stamp is the one last agreed,
+not by which is later, so a device with a wrong clock can't fool it. The app
+checks again each time it comes back on screen.
+
+Deleting a person or a workplace (and Delete all data) switches their staff
+links off on the server first. With sync on, Delete all data empties every
+device sharing the rosters and the account's copy, and the confirm says so.
+
 ## The scheduler
 
 `js/scheduler.js` is the part that matters, and it is deliberately boring:
@@ -351,7 +363,8 @@ silent gap.
 **Settings → AI assist** turns pasted messages into ticked days, away dates and
 clash pairs for you to approve. Names it doesn't recognise are thrown away. It
 never decides who works when. Supported: Gemini, Anthropic and OpenAI; the key is
-stored on this device only (fine for a personal phone, not a shared one).
+stored on this device only (fine for a personal phone, not a shared one): in its
+own localStorage entry, never in the synced data.
 
 ## Running it locally
 

@@ -35,6 +35,13 @@ const SYNCED_AT_KEY = 'rosterwarden.sync.at';
 /** When this device last changed the data itself. */
 const CHANGED_AT_KEY = 'rosterwarden.sync.changed';
 
+/**
+ * The CHANGED_AT_KEY value this device's data had when it last agreed with the
+ * server. Compared for equality, never order, so it doesn't matter whose clock
+ * any stamp came from.
+ */
+const AGREED_CHANGE_KEY = 'rosterwarden.sync.agreedChange';
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -185,20 +192,87 @@ export function markChanged() {
   setStamp(CHANGED_AT_KEY, new Date().toISOString());
 }
 
+/** Whether this device has changed the data since it last agreed with the server. */
+function deviceMovedOn() {
+  const changedAt = stamp(CHANGED_AT_KEY);
+  if (!changedAt) return false;
+  const agreed = stamp(AGREED_CHANGE_KEY);
+  // A device that last synced before AGREED_CHANGE_KEY existed: the old comparison, this once.
+  return agreed ? changedAt !== agreed : changedAt > stamp(SYNCED_AT_KEY);
+}
+
 /**
- * Bring this device and the server into agreement, once, at startup.
+ * Record that this device and the server now hold the same copy: the server's
+ * copy stamped `serverAt`, matching this device's data as it was at `changedAt`.
+ */
+function agree(serverAt, changedAt) {
+  setStamp(SYNCED_AT_KEY, serverAt);
+  setStamp(AGREED_CHANGE_KEY, changedAt);
+}
+
+/** Record that this device has just taken the server's copy stamped `serverAt`. */
+function tookServerCopy(serverAt) {
+  clearTimeout(pushTimer);   // a queued upload holds the data that was just replaced
+  setStamp(CHANGED_AT_KEY, serverAt);
+  agree(serverAt, serverAt);
+}
+
+/**
+ * Note that this device's data is now the server's copy stamped `serverAt`,
+ * having been brought in some other way (an account's rosters on a new phone).
+ */
+export function agreedWith(serverAt) {
+  setStamp(SYNCED_AT_KEY, serverAt);
+}
+
+/**
+ * Raised when an upload is refused because another device saved since this one
+ * last agreed with the server. `updatedAt` is the stamp of what the server has.
+ */
+export class SyncConflict extends Error {
+  constructor(updatedAt) {
+    super('This device and another both changed things since they last matched.');
+    this.updatedAt = updatedAt;
+  }
+}
+
+/** True while a conflict waits for the person to choose a copy: nothing uploads meanwhile. */
+let held = false;
+
+/** Called when a background upload finds a conflict (see `onConflict`). */
+let conflictListener = null;
+
+/** Register the one listener told when a background upload finds a conflict. */
+export function onConflict(fn) {
+  conflictListener = fn;
+}
+
+/** Stop uploading until a copy is chosen, and say so. */
+function hold() {
+  held = true;
+  clearTimeout(pushTimer);
+  setStatus('conflict', 'This device and another both changed things since they last agreed.');
+}
+
+/**
+ * Bring this device and the server into agreement: at startup, and each time
+ * the app comes back on screen.
  *
  * The server holds the authoritative copy; the device keeps its own so the app
  * still opens and works with no signal. This decides which of the two moved on
  * since they last agreed:
  *
- *   server newer, device unchanged  ->  take the server's copy
- *   device newer, server unchanged  ->  upload
- *   both changed                    ->  keep the device's, and say so
+ *   server changed, device unchanged  ->  take the server's copy
+ *   device changed, server unchanged  ->  upload
+ *   both changed                      ->  hold uploads, and return 'conflict'
+ *                                         for the person to choose (`resolveConflict`)
  *
  * The last case is the one that matters. Silently picking a winner is how
- * somebody's afternoon of edits disappears without anyone noticing, so it
- * keeps what is in front of the user and reports the clash instead.
+ * somebody's afternoon of edits disappears without anyone noticing, so nothing
+ * is replaced, here or on the server, until the person says which to keep.
+ *
+ * "Changed" is judged by whether a stamp is the one last agreed, never by
+ * which stamp is later, so devices whose clocks disagree can't fool it.
  *
  * `apply(data)` is called with the server's copy when that is the one to keep.
  */
@@ -206,8 +280,6 @@ export async function reconcile(localData, apply) {
   if (!isEnabled()) return { action: 'off' };
 
   const syncedAt = stamp(SYNCED_AT_KEY);
-  const changedAt = stamp(CHANGED_AT_KEY);
-  const deviceMovedOn = Boolean(changedAt) && changedAt > syncedAt;
 
   let remote;
   try {
@@ -217,48 +289,78 @@ export async function reconcile(localData, apply) {
     return { action: 'failed', message: err.message };
   }
 
+  // Judged after the pull, so an edit made while it was on its way counts.
+  const changedAt = stamp(CHANGED_AT_KEY);
+  const deviceChanged = deviceMovedOn();
+
   // Nothing stored yet: this device seeds it.
   if (!remote) {
     try {
-      const at = await push(localData);
-      setStamp(SYNCED_AT_KEY, at);
+      agree(await push(localData, currentCode(), syncedAt), changedAt);
+      held = false;
       setStatus('synced');
       return { action: 'uploaded' };
     } catch (err) {
-      setStatus('error', err.message);
-      return { action: 'failed', message: err.message };
+      return failed(err);
     }
   }
 
-  const serverMovedOn = Boolean(remote.updatedAt) && remote.updatedAt > syncedAt;
+  const serverMovedOn = remote.updatedAt !== syncedAt;
 
-  if (serverMovedOn && deviceMovedOn) {
-    setStatus('conflict', 'This device and another both changed things since they last agreed.');
+  if (serverMovedOn && deviceChanged) {
+    hold();
     return { action: 'conflict', at: remote.updatedAt };
   }
 
   if (serverMovedOn) {
     apply(remote.data);
-    setStamp(SYNCED_AT_KEY, remote.updatedAt);
-    setStamp(CHANGED_AT_KEY, remote.updatedAt);
+    tookServerCopy(remote.updatedAt);
+    held = false;
     setStatus('synced');
     return { action: 'downloaded' };
   }
 
-  if (deviceMovedOn) {
+  if (deviceChanged) {
     try {
-      const at = await push(localData);
-      setStamp(SYNCED_AT_KEY, at);
+      agree(await push(localData, currentCode(), syncedAt), changedAt);
+      held = false;
       setStatus('synced');
       return { action: 'uploaded' };
     } catch (err) {
-      setStatus('error', err.message);
-      return { action: 'failed', message: err.message };
+      return failed(err);
     }
   }
 
   setStatus('synced');
-  return { action: 'in-sync' };
+  return { action: held ? 'conflict' : 'in-sync' };
+}
+
+/** What `reconcile` returns when an upload fails: a conflict found meanwhile, or the error. */
+function failed(err) {
+  if (err instanceof SyncConflict) {
+    hold();
+    return { action: 'conflict', at: err.updatedAt };
+  }
+  setStatus('error', err.message);
+  return { action: 'failed', message: err.message };
+}
+
+/**
+ * Settle a conflict the person has chosen a side in: keep this device's copy
+ * (it replaces the server's) or take the server's (`apply(data)` is given it).
+ * Throws SyncConflict if yet another save lands meanwhile, to be asked again.
+ */
+export async function resolveConflict(keepThisDevice, localData, apply) {
+  const remote = await pull();
+  if (keepThisDevice || !remote) {
+    const changedAt = stamp(CHANGED_AT_KEY);
+    agree(await push(localData, currentCode(), remote ? remote.updatedAt : stamp(SYNCED_AT_KEY)), changedAt);
+  } else {
+    apply(remote.data);
+    tookServerCopy(remote.updatedAt);
+  }
+  held = false;
+  setStatus('synced');
 }
 
 /**
@@ -316,23 +418,31 @@ function setStatus(state, message = '') {
  * Settings instead.
  */
 export function schedulePush(data, delay = 3000) {
-  if (!isEnabled()) return;
+  if (!isEnabled() || held) return;
   clearTimeout(pushTimer);
   setStatus('pending');
   pushTimer = setTimeout(async () => {
+    const changedAt = stamp(CHANGED_AT_KEY);
     try {
-      const at = await push(data);
+      // Only over the copy this device last agreed with: if another device saved since, the server says so.
+      const at = await push(data, currentCode(), stamp(SYNCED_AT_KEY));
       // Record agreement, so the next launch knows this device is not ahead.
-      setStamp(SYNCED_AT_KEY, at);
+      agree(at, changedAt);
       setStatus('synced');
     } catch (err) {
-      setStatus('error', err.message);
+      if (!(err instanceof SyncConflict)) { setStatus('error', err.message); return; }
+      hold();
+      conflictListener?.();
     }
   }, delay);
 }
 
-/** Upload the encrypted database. Returns the timestamp the server recorded. */
-export async function push(data, code = currentCode()) {
+/**
+ * Upload the encrypted database. Returns the timestamp the server recorded.
+ * Given `base` (the stamp of the copy this device last agreed with), the server
+ * refuses it with a SyncConflict if another device has saved since.
+ */
+export async function push(data, code = currentCode(), base = undefined) {
   if (!SYNC_URL) throw new SyncError('No sync server is configured for this app.');
   if (!code) throw new SyncError('Sync is not switched on for this device.');
 
@@ -345,11 +455,12 @@ export async function push(data, code = currentCode()) {
     res = await fetch(`${SYNC_URL}/db/${storageId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...payload, updatedAt }),
+      body: JSON.stringify({ ...payload, updatedAt, ...(base !== undefined ? { base } : {}) }),
     });
   } catch {
     throw new SyncError('Could not reach the sync server. Your data is still safe on this device.');
   }
+  if (res.status === 409) throw new SyncConflict((await res.json().catch(() => ({}))).updatedAt ?? null);
   if (!res.ok) throw new SyncError(`Sync server returned ${res.status}.`);
   return updatedAt;
 }

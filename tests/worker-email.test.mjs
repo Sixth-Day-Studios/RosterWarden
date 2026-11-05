@@ -9,7 +9,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker, { EMAIL_SQL, DAILY_EMAILS } from '../worker/src/index.js';
 
-/** An in-memory D1 that understands exactly the daily count statements. */
+/**
+ * An in-memory D1 that understands exactly the daily count statements, each
+ * run as one step (as SQLite runs one statement), with `meta.changes` as D1 gives it.
+ */
 function fakeDB() {
   const rows = new Map();
   return {
@@ -17,15 +20,26 @@ function fakeDB() {
     prepare(sql) {
       return {
         bind(...args) {
-          const key = `${args[0]}|${args[1]}`;
           return {
             async first() {
               assert.equal(sql, EMAIL_SQL.read);
+              const key = `${args[0]}|${args[1]}`;
               return rows.has(key) ? { sent: rows.get(key) } : null;
             },
             async run() {
-              assert.equal(sql, EMAIL_SQL.add);
-              rows.set(key, (rows.get(key) || 0) + args[2]);
+              if (sql === EMAIL_SQL.reserve) {
+                const [account, day, n, cap] = args;
+                const key = `${account}|${day}`;
+                // A new row always goes in; an existing one only grows while it stays within the cap.
+                if (rows.has(key) && rows.get(key) + n > cap) return { meta: { changes: 0 } };
+                rows.set(key, (rows.get(key) || 0) + n);
+                return { meta: { changes: 1 } };
+              }
+              assert.equal(sql, EMAIL_SQL.release);
+              const [n, account, day] = args;
+              const key = `${account}|${day}`;
+              if (rows.has(key)) rows.set(key, Math.max(rows.get(key) - n, 0));
+              return { meta: { changes: rows.has(key) ? 1 : 0 } };
             },
           };
         },
@@ -127,6 +141,19 @@ test('an account is held to its daily limit', async () => {
   assert.equal(sent.length, DAILY_EMAILS);
 });
 
+test('sends at the same moment are still held to the daily limit between them', async () => {
+  sent.length = 0;
+  const e = env();
+  const batch = (from) => ({
+    ...ROSTER, messages: Array.from({ length: DAILY_EMAILS }, (_, i) => ({ to: `p${from + i}@example.com`, text: 'hi' })),
+  });
+  // Three full-day sends at once: before the count was taken up front, all three went out.
+  const statuses = (await Promise.all([send(e, batch(0)), send(e, batch(1000)), send(e, batch(2000))])).map((r) => r.status);
+  assert.deepEqual(statuses.sort(), [200, 429, 429]);
+  assert.equal(sent.length, DAILY_EMAILS);
+  assert.equal([...e.DB.rows.values()][0], DAILY_EMAILS);
+});
+
 test('a refusal from the email service is passed on and not counted', async () => {
   serviceFails = true;
   const e = env();
@@ -134,7 +161,7 @@ test('a refusal from the email service is passed on and not counted', async () =
   serviceFails = false;
   assert.equal(res.status, 502);
   assert.match((await res.json()).error, /domain not verified/);
-  assert.equal(e.DB.rows.size, 0);
+  assert.ok([...e.DB.rows.values()].every((n) => n === 0), 'the refused send is given back');
 });
 
 test('without an API key it says email is not set up', async () => {

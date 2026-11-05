@@ -132,7 +132,7 @@ function connectedBody(org, teams, redraw, fail, err) {
   const status = el('div', {
     className: 'faint',
     textContent: link.updatedAt
-      ? `Last updated ${formatDate(link.updatedAt.slice(0, 10))}.`
+      ? `Last updated ${formatDate(todayISO(new Date(link.updatedAt)))}.`
       : 'Not updated yet.',
   });
   const updateBtn = el('button', { className: 'btn btn-primary btn-block', textContent: 'Update from Planning Center' });
@@ -388,6 +388,15 @@ export async function sendToPlanningCenter(roster, status = () => {}) {
   }
 }
 
+/** True when `url` is an https address on planningcenteronline.com (or a subdomain of it). */
+function isPcoUrl(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:'
+      && (u.hostname === 'planningcenteronline.com' || u.hostname.endsWith('.planningcenteronline.com'));
+  } catch { return false; }
+}
+
 /**
  * The after-send report: what went in, each reason something didn't, and -
  * when notifying - a link to each plan, where Send is one tap away.
@@ -413,10 +422,13 @@ function showSendResult(result, people, shifts, notify) {
   // Each plan that gained someone, as a link straight to it in Planning Center.
   const planLinks = notify && result.plans.some((p) => p.url) ? [
     el('p', { className: 'muted', textContent: 'Open each plan and press Send to notify people:' }),
-    el('div', { className: 'row' }, result.plans.filter((p) => p.url).map((p) => el('a', {
-      className: 'btn btn-sm', href: p.url, target: '_blank', rel: 'noopener',
-      textContent: `Open ${formatDate(p.date, { withWeekday: false }).replace(/ \d{4}$/, '')}`,
-    }))),
+    el('div', { className: 'row' }, result.plans.filter((p) => p.url).map((p) => {
+      const textContent = `Open ${formatDate(p.date, { withWeekday: false }).replace(/ \d{4}$/, '')}`;
+      // Only a genuine Planning Center address becomes a link; anything else stays plain text.
+      return isPcoUrl(p.url)
+        ? el('a', { className: 'btn btn-sm', href: p.url, target: '_blank', rel: 'noopener', textContent })
+        : el('span', { className: 'btn btn-sm', textContent });
+    })),
   ] : [];
 
   return dialog((close) => [

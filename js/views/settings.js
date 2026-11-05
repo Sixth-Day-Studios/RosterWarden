@@ -18,6 +18,7 @@ import { openWizard } from './wizard.js';
 import { canInstall, isInstalled, isIOS, promptInstall } from '../install.js';
 import * as staff from '../staff.js';
 import * as account from '../account.js';
+import * as sync from '../sync.js';
 import { openAskGuardian } from '../askguardian.js';
 import { signInButtons } from './account.js';
 import { STORED_KEY as STAFF_LINK_KEY } from './staff.js';
@@ -191,6 +192,18 @@ function renderWorkplaceCard() {
         `This deletes "${org.name}" and all of its people, shifts and saved rosters. This cannot be undone.`
       );
       if (!ok) return;
+      // Switch its people's staff links off while their keys are still here; offline, say what that means.
+      try {
+        await staff.retireLinks(store.data.people.filter((p) => p.orgId === org.id).map((p) => p.id));
+      } catch {
+        const anyway = await confirmDialog(
+          'Staff links still on',
+          'The server couldn\'t be reached, so the staff links you sent for this organisation will keep showing '
+            + 'their old shifts. Delete it anyway, or wait until you\'re online?',
+          'Delete anyway'
+        );
+        if (!anyway) return;
+      }
       store.deleteOrg(org.id);
       refreshOrgs();
       show('roster');
@@ -418,16 +431,21 @@ function deleteAllButton() {
   return el('button', {
     className: 'btn btn-danger btn-block', textContent: 'Delete all data',
     onclick: async () => {
+      // With sync on, the emptied copy is uploaded like any other change, so it reaches every device on the
+      // same rosters (and the account's copy). Say so, rather than "on this device".
+      const where = sync.isEnabled()
+        ? 'here, on every other device that shares these rosters, and in your account\'s copy'
+        : 'on this device';
       const ok = await confirmDialog(
         'Delete all data',
-        'This permanently deletes every organisation, person, shift and saved roster on this device, and switches off '
+        `This permanently deletes every organisation, person, shift and saved roster ${where}, and switches off `
           + 'every staff link you have sent. There is no undo.',
         'Delete everything'
       );
       if (!ok) return;
       // Switch the staff links off on the server while their keys are still here; offline, say what that means.
       try {
-        await staff.retireAllLinks();
+        await staff.retireLinks();
       } catch {
         const anyway = await confirmDialog(
           'Staff links still on',

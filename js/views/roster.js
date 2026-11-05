@@ -11,7 +11,7 @@
 import { store } from '../store.js';
 import {
   buildRoster, formatDate, toDays, fromDays, auditRoster, todayISO, followOnDates, usualDayShifts,
-  latestRoster, carryDayShifts,
+  latestRoster, carryDayShifts, shiftsSnapshot,
 } from '../scheduler.js';
 import { shiftTimes } from '../export.js';
 import { parseAvailability, describe, AIError } from '../ai.js';
@@ -233,7 +233,8 @@ export function render(container) {
       store.deleteRoster(draftId);
       draftId = null;
     }
-    const saved = store.saveRoster(roster);
+    // The usual shifts it was built from go with it, so Next roster can tell its hand-changed days apart.
+    const saved = store.saveRoster({ ...roster, usualShifts: shiftsSnapshot(store.shifts()) });
     picked = new Set();
     plan = {};
     followOn = true;
@@ -424,7 +425,7 @@ function openSection(container, open, buildFrom) {
 
   return el('div', { className: 'card' }, [
     el('strong', { textContent: 'Shifts offered to staff' }),
-    el('div', { className: 'faint', textContent: `Offered ${formatDate(open.sentAt.slice(0, 10), { withWeekday: false })} · ${taken} of ${slots.length} taken` }),
+    el('div', { className: 'faint', textContent: `Offered ${formatDate(todayISO(new Date(open.sentAt)), { withWeekday: false })} · ${taken} of ${slots.length} taken` }),
     ...days,
     el('div', {}, [el('strong', { textContent: 'Answered: ' }), yes.length ? names(yes) : 'nobody yet']),
     waiting.length ? el('div', {}, [el('strong', { textContent: 'Not answered yet: ' }), names(waiting)]) : null,
@@ -438,7 +439,16 @@ function openSection(container, open, buildFrom) {
           render(container);
         },
       }),
-      el('button', { type: 'button', className: 'btn btn-sm btn-primary', textContent: 'Build from these', onclick: () => buildFrom(open) }),
+      el('button', {
+        type: 'button', className: 'btn btn-sm btn-primary', textContent: 'Build from these',
+        onclick: async (e) => {
+          // One build at a time: a second tap while the claims refresh would build twice.
+          const btn = e.currentTarget;
+          if (btn.disabled) return;
+          btn.disabled = true;
+          try { await buildFrom(open); } finally { btn.disabled = false; }
+        },
+      }),
       el('button', {
         type: 'button', className: 'btn btn-sm btn-danger', textContent: 'Stop',
         onclick: async () => {

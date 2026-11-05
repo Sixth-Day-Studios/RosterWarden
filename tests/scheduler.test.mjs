@@ -252,3 +252,23 @@ test('a request outside the rostered dates is not reported as missed', () => {
   assert.ok(!r.notes.some((n) => n.includes('asked for')));
 });
 
+
+test('a max-shifts cap holds when the person has a locked place later in the roster', () => {
+  // Aaron can do one shift, and has taken the last date (say, through shifts offered to staff).
+  const aaron = person(1, 'Aaron', undefined, { maxShifts: 1 });
+  const people = [aaron, person(2, 'Zoe')];
+  const dates = ['2026-11-07', '2026-11-14', '2026-11-21'];
+  const r = buildRoster({
+    orgId: 1, name: 't', people, shifts: [shift(1, 'Cafe')], clashes: [], dates,
+    locked: [{ date: '2026-11-21', shiftId: 1, personId: 1 }],
+  });
+  assert.deepEqual(r.assignments.filter((a) => a.personId === 1).map((a) => a.date), ['2026-11-21']);
+});
+
+test('a rebuild with nobody active keeps the locked places', () => {
+  const r = buildRoster({
+    orgId: 1, name: 't', people: [person(1, 'Aaron', undefined, { active: false })], shifts: [shift(1, 'Cafe')], clashes: [],
+    dates: ['2026-11-07'], locked: [{ date: '2026-11-07', shiftId: 1, personId: 1 }],
+  });
+  assert.deepEqual(r.assignments.map((a) => [a.date, a.personId, a.locked]), [['2026-11-07', 1, true]]);
+});

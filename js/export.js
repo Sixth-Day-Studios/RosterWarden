@@ -204,6 +204,7 @@ export function formatPerPerson(roster, people, shifts, roles = []) {
   const roleNames = new Map(roles.map((r) => [r.id, r.name]));
   const manyShifts = new Set(roster.assignments.map((a) => a.shiftId)).size > 1;
 
+  // Keyed by person id, so two people who share a name stay separate.
   const byPerson = new Map();
   for (const a of [...roster.assignments].sort((x, y) => x.date.localeCompare(y.date))) {
     const name = nameOf.get(a.personId) || '(removed)';
@@ -214,20 +215,22 @@ export function formatPerPerson(roster, people, shifts, roles = []) {
       a.roleId != null ? (roleNames.get(a.roleId) || 'removed role') : null,
     ].filter(Boolean).join(', ');
     const when = shortDate(a.date) + (detail ? ` (${detail})` : '');
-    if (!byPerson.has(name)) byPerson.set(name, []);
-    byPerson.get(name).push(when);
+    if (!byPerson.has(a.personId)) byPerson.set(a.personId, { name, whens: [] });
+    byPerson.get(a.personId).whens.push(when);
   }
 
   const lines = [`${roster.name}: who's on when`, ''];
-  for (const name of [...byPerson.keys()].sort((a, b) => a.localeCompare(b))) {
-    lines.push(`${name}: ${byPerson.get(name).join(', ')}`);
-  }
+  const entries = [...byPerson.values()].sort((a, b) => a.name.localeCompare(b.name));
+  for (const { name, whens } of entries) lines.push(`${name}: ${whens.join(', ')}`);
   return lines.join('\n');
 }
 
 /** One CSV field, quoted when it holds a comma, quote or line break (RFC 4180). */
 function csvField(value) {
-  const s = String(value ?? '');
+  let s = String(value ?? '');
+  // Stop a spreadsheet running a name like =HYPERLINK(...) as a formula: lead it with a
+  // quote. Plain numbers (even negative) are left alone.
+  if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

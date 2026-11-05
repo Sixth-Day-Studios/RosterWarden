@@ -16,13 +16,16 @@ async function adopt(code) {
   if (result) store.importJSON(JSON.stringify(result.data));
   sync.setDisabled(false);
   sync.setCode(code);
+  // This device now holds that copy, so its next upload goes over it rather than being taken for a clash.
+  if (result) sync.agreedWith(result.updatedAt);
   refreshOrgs();
 }
 
 /**
  * After signing in, make the account and this device agree on one sync code.
  * A new phone with nothing on it just takes the account's rosters; a phone
- * with its own rosters asks which to keep.
+ * with its own rosters asks which to keep. Resolves false when that question
+ * was dismissed, which leaves both as they were.
  */
 async function matchAccount() {
   const matched = await account.matchCode();
@@ -40,6 +43,8 @@ async function matchAccount() {
       el('button', { className: 'btn btn-primary', textContent: 'Use my account\'s', onclick: () => close(true) }),
     ]),
   ]);
+  // Dismissed (Esc or Back) is not an answer: change nothing on either side, and say so.
+  if (useAccount === null) return false;
   if (useAccount) {
     await adopt(matched.code);
     toast('Your rosters are back');
@@ -77,8 +82,10 @@ export async function resumeSignIn() {
   toast('Finishing signing in…');
   try {
     if (!(await account.finish(search))) return false;
-    await matchAccount();
-    toast(`Signed in as ${account.current().email}`);
+    const settled = await matchAccount();
+    toast(settled === false
+      ? `Signed in as ${account.current().email}. Nothing changed: sign out and in again to choose which rosters to keep.`
+      : `Signed in as ${account.current().email}`);
     return true;
   } catch (e) {
     toast(e.message);
