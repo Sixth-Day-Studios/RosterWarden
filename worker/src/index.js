@@ -51,6 +51,10 @@
  * client secret, which cannot ship inside a web page. The worker adds the
  * secret, passes the request on, and hands the tokens straight back - it
  * stores nothing, and roster data never comes through here.
+ *
+ * None of this needs signing in, so every request except a CORS preflight
+ * counts against a per-client rate limit (RATE_LIMIT in wrangler.toml): past
+ * it, 429 { error } until the minute is up.
  */
 
 /**
@@ -152,6 +156,38 @@ function json(body, status, origin) {
   });
 }
 
+/**
+ * Who a request is counted against for the rate limit: its IP address, or for IPv6 the /64 network it
+ * is in. One connection is usually given a whole /64, so counting single IPv6 addresses would let a
+ * client step to a fresh one for every request.
+ */
+export function clientKey(request) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  // IPv4, including IPv4 written inside IPv6 (::ffff:1.2.3.4), is one address, one client.
+  if (!ip.includes(':') || ip.includes('.')) return ip;
+  // Expand a "::" to the zero groups it stands for, then keep the first four groups (64 bits).
+  const [head, tail] = ip.toLowerCase().split('::');
+  const left = head ? head.split(':') : [];
+  const right = tail ? tail.split(':') : [];
+  const groups = tail === undefined ? left : [...left, ...Array(Math.max(8 - left.length - right.length, 0)).fill('0'), ...right];
+  return `${groups.slice(0, 4).join(':')}::/64`;
+}
+
+/**
+ * Whether this request is within its client's rate limit (the RATE_LIMIT binding in wrangler.toml). Always
+ * true without the binding (the tests, or a worker deployed without it), and when the limiter itself
+ * fails: a hiccup in the limiter shouldn't take sync, staff links and email down with it.
+ */
+async function withinRateLimit(request, env) {
+  if (!env.RATE_LIMIT) return true;
+  try {
+    const { success } = await env.RATE_LIMIT.limit({ key: clientKey(request) });
+    return success;
+  } catch {
+    return true;
+  }
+}
+
 export default {
   /** Route one request. */
   async fetch(request, env) {
@@ -160,6 +196,12 @@ export default {
 
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: cors(origin) });
+    }
+
+    // Everything else counts against its client's rate limit. Preflights above don't: refusing one would
+    // reach the app as a bare network error instead of this readable 429.
+    if (!(await withinRateLimit(request, env))) {
+      return json({ error: 'Too many requests from this connection. Try again in a minute.' }, 429, origin);
     }
 
     if (request.method === 'POST' && url.pathname === '/pco/token') {
@@ -471,7 +513,7 @@ async function write(id, request, env, origin) {
  * Exchange a Planning Center sign-in code (or refresh token) for tokens.
  *
  * `PCO_CLIENT_ID` is a plain var in wrangler.toml; `PCO_CLIENT_SECRET` is a
- * Worker secret (`npx wrangler secret put PCO_CLIENT_SECRET`). Planning Center
+ * Worker secret (`wrangler secret put`, see worker/README.md). Planning Center
  * itself checks `redirect_uri` against the app's registered list, so a code
  * cannot be redeemed for some other site.
  */

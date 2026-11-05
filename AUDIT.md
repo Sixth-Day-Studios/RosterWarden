@@ -145,14 +145,14 @@ Severity · confidence · status. File references are to `audit-fixes` unless no
 
 ### Security
 - **Confirmed and fixed:** the email cap race (#9); staff-link poison (#5). An email from a staff page with mailto extras (`sam@x.com?cc=…&body=…`) was stored and put unencoded into the owner's Email buttons: Low · reproduced · **Fixed** (strict intake regex plus encoding at both sinks). CSV formula injection (`=HYPERLINK(...)` names from Planning Center or pasted lists): Low · reproduced · **Fixed**. A Planning Center plan URL was used as a link with no scheme or host check: Low · **Fixed**. An open-shift claim name could be any object and could crash colleagues' pages: Low · reproduced · **Fixed** (string, capped at 40; impersonation within 40 characters is still possible on staff pages only, since the owner side verifies by token).
-- **Hardening, partly done:** the live site sends no security headers. Added `_headers` (nosniff, Referrer-Policy, `X-Frame-Options: DENY`, `frame-ancestors 'none'`) and shipped it from `wr.py`. **Open:** a full CSP. There are no inline scripts, so a strict policy should work, but it needs testing against the live site. The suggested policy is in the ops notes below.
+- **Hardening, partly done:** the live site sends no security headers. Added `_headers` (nosniff, Referrer-Policy, `X-Frame-Options: DENY`, `frame-ancestors 'none'`) and shipped it from `wr.py`. ~~**Open:** a full CSP.~~ **Done in #42** (6 November 2026): a strict policy with no `unsafe-*`, tested in a browser, and `tests/headers.test.mjs` keeps it in step with the hosts the code uses.
 - **Possible risks (open):**
   - Any self-serve account can send 100 emails a day of arbitrary text from your verified domain, with a chosen display name and reply-to. Consider limiting reply-to and checking recipients.
-  - The worker endpoints are unauthenticated by design and have no rate limit. Anyone can PUT 2 MB blobs under random ids, or burn the free-plan daily write and request quota, which stops sync, staff links and email for everyone until the next day. Add a Cloudflare rate-limiting rule or binding.
+  - The worker endpoints are unauthenticated by design and have no rate limit. Anyone can PUT 2 MB blobs under random ids, or burn the free-plan daily write and request quota, which stops sync, staff links and email for everyone until the next day. **Done in #42:** a rate-limit binding, 600 requests a minute per IP (or IPv6 /64). Refused requests still count toward the daily request quota; only a WAF rule in front of the worker would protect that.
   - Any colleague with the open-shift key can hold every slot with a random token (staff-to-staff griefing).
   - Anyone can mint a staff-link key, write their own "staff page" and send it, getting a convincing page on your real domain whose details form posts to them. Inherent to login-free links; only remembering keys that load a real page would help.
 - **Supply chain / ops (open):**
-  - `wr.py` runs `npx --yes wrangler@4` (floating) with the Cloudflare token in its environment. Pin wrangler in a committed `package.json` plus lockfile, and scope the token.
+  - `wr.py` runs `npx --yes wrangler@4` (floating) with the Cloudflare token in its environment. Pin wrangler in a committed `package.json` plus lockfile, and scope the token. **Pinning done in #42** (wrangler 4.151.3, `npx --no-install`), along with a gate that refuses to deploy unless the checkout is a clean `main` whose tests pass. Scoping the token is still open.
   - The legacy updater (`legacy-desktop/core/updater.py`) would run any `Rosterm8.exe` from the latest release of `Mikeyau-ai/Rosterm8`, with no hash or signature check. Inert today (no releases), but keep that namespace owned to stop repojacking.
 - See *Verified not an issue* for what was checked and holds up.
 
@@ -268,7 +268,7 @@ Severity · confidence · status. File references are to `audit-fixes` unless no
 ## Refactor priorities / quick wins / test priorities
 
 1. **Immediately:** deploy the worker (`cd worker; npx wrangler deploy --config wrangler.toml`) and the app (`python wr.py deploy`) once `audit-fixes` is merged. Either order is safe. Then try the two-device conflict on real phones.
-2. **Quick wins still open:** pin wrangler plus a lockfile; gate `wr.py` on main/clean/tests; bind the dev server to 127.0.0.1; a Cloudflare rate-limit rule on the worker; a full CSP after testing; single-flight Planning Center refresh; `matchCode` retry on launch.
+2. **Quick wins still open:** bind the dev server to 127.0.0.1; single-flight Planning Center refresh; `matchCode` retry on launch; scope the Cloudflare token. (Pinned wrangler, the deploy gate, the worker rate limit and the full CSP were done in #42.)
 3. **Medium term:** atomic versioned service-worker caches per deploy; per-record sync merge; worker table cleanup; accessibility pass on sheets and calendars.
 4. **Tests:** staff page, sw install/offline, an end-to-end browser run of build → edit → rebuild → Next roster.
 

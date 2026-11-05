@@ -6,6 +6,23 @@ pull requests, which are linked so the full detail is one click away.
 
 ## Unreleased
 
+## 6 November 2026
+
+From [#42].
+
+- The site now tells browsers exactly what it may load and talk to (a
+  Content Security Policy): only its own code and styles, the sync server,
+  Planning Center, your account, Ask Guardian and the AI providers. Code that
+  somehow got into the page couldn't send your rosters anywhere else.
+- The sync server now limits how many requests one connection can make a
+  minute, so one misbehaving client can't use up the day's free allowance
+  and stop sync, staff links and emails for everyone. Normal use is far
+  below the limit. If it is ever reached, the app asks you to try again in
+  a minute, and Planning Center stays connected.
+- Deploying (`python wr.py deploy`) only goes ahead from a clean `main` whose
+  tests pass (`--force` overrides), and uses the exact wrangler version in
+  `package-lock.json` (run `npm ci` once) instead of whatever npm offers that day.
+
 ## 5 November 2026
 
 From [#40], a repo-wide audit (`AUDIT.md`), and [#41].
@@ -253,3 +270,4 @@ First release of the web app, rebuilt from the Rosterm8 desktop app (see
 [#39]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/39
 [#40]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/40
 [#41]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/41
+[#42]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/42

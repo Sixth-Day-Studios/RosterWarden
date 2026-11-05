@@ -47,6 +47,46 @@ identifying User-Agent, which Planning Center requires) to a token request and
 pass Planning Center's answer straight back. Nothing is stored, and roster data never
 comes through here (the app calls Planning Center's API directly).
 
+## Running wrangler
+
+Every command below uses the wrangler pinned in the repo's `package.json` and
+`package-lock.json`. Install it once at the repo root (and again when the
+lockfile changes), then run the commands from this folder:
+
+```bash
+npm ci
+```
+
+`--no-install` makes `npx` use that copy and never fetch the latest from npm.
+Always pass `--config wrangler.toml`. Without it, wrangler can pick up the app's
+own config at the repo root, so a deploy would redeploy the app, and a secret
+would land on the app instead of this worker.
+
+## Rate limit
+
+None of the endpoints need signing in, so each client (an IP address, or an
+IPv6 /64 network) can make at most **600 requests a minute** (`[[ratelimits]]`
+in `wrangler.toml`, counted per Cloudflare location). Past that it gets `429
+{ error }` until the minute is up. CORS preflights don't count. Real use is far
+below it: an owner's app checks staff links every 2 minutes, uploads a few
+seconds after each change, and publishes or replaces links one request per
+person, so even "Delete all data" for a 250-person workplace fits in a minute.
+
+What it does and doesn't do:
+
+- It stops one client hammering the worker: flooding D1 with writes or
+  2 MB blobs, or running up the email service and Planning Center.
+- A refused request still reaches the worker, so it still counts towards the
+  free plan's 100,000 requests a day. One determined client can still use that
+  up over a few hours, and many clients together get around any per-client
+  limit. Stopping that needs a rate-limiting rule in front of the worker
+  (Cloudflare WAF, on a custom domain), not code inside it.
+- If the limiter itself fails, requests go through (sync matters more), and
+  without the binding at all the worker runs unlimited, as before.
+- Cloudflare's docs don't say whether the binding is on the free plan. If a
+  deploy refuses it, take the `[[ratelimits]]` block out of `wrangler.toml`.
+  The worker runs fine without it.
+
 ## Planning Center (optional)
 
 1. In a free Planning Center organisation of your own (you must be its
@@ -58,10 +98,10 @@ comes through here (the app calls Planning Center's API directly).
 3. Store the secret on Cloudflare, never in a file:
 
    ```bash
-   npx wrangler secret put PCO_CLIENT_SECRET
+   npx --no-install wrangler secret put PCO_CLIENT_SECRET --config wrangler.toml
    ```
 
-4. `npx wrangler deploy`.
+4. `npx --no-install wrangler deploy --config wrangler.toml`.
 
 Until both are set, the endpoints answer `501` and the app's Planning Center
 card says it isn't set up.
@@ -88,16 +128,16 @@ roster's people: the app picks them from the roster.
 3. Store the API key on Cloudflare, never in a file:
 
    ```bash
-   npx wrangler secret put RESEND_API_KEY
+   npx --no-install wrangler secret put RESEND_API_KEY --config wrangler.toml
    ```
 
 4. Add the `email_sends` table (only missing tables are created):
 
    ```bash
-   npx wrangler d1 execute rosterm8 --remote --file=./schema.sql
+   npx --no-install wrangler d1 execute rosterm8 --remote --file=./schema.sql --config wrangler.toml
    ```
 
-5. `npx wrangler deploy`.
+5. `npx --no-install wrangler deploy --config wrangler.toml`.
 
 Until the key is set, `/email` answers `501` and the app shows that message.
 Resend's free plan allows 100 emails a day across all accounts, so a paid plan
@@ -124,19 +164,22 @@ You need a free Cloudflare account. No domain, no credit card.
 ```bash
 # 1. Sign up at https://dash.cloudflare.com/sign-up   (free plan is fine)
 
-# 2. From this folder, log in. It opens a browser once.
-npx wrangler login
+# 2. At the repo root, install the pinned wrangler (see "Running wrangler" above).
+npm ci
 
-# 3. Create the database. This prints a database_id — copy it.
-npx wrangler d1 create rosterwarden
+# 3. From this folder, log in. It opens a browser once.
+npx --no-install wrangler login
 
-# 4. Paste that id into wrangler.toml, replacing PASTE_YOUR_DATABASE_ID_HERE
+# 4. Create the database. This prints a database_id — copy it.
+npx --no-install wrangler d1 create rosterwarden
 
-# 5. Create the table.
-npx wrangler d1 execute rosterwarden --remote --file=./schema.sql
+# 5. Paste that id into wrangler.toml, replacing PASTE_YOUR_DATABASE_ID_HERE
 
-# 6. Deploy. This prints your worker URL.
-npx wrangler deploy
+# 6. Create the table.
+npx --no-install wrangler d1 execute rosterwarden --remote --file=./schema.sql --config wrangler.toml
+
+# 7. Deploy. This prints your worker URL.
+npx --no-install wrangler deploy --config wrangler.toml
 ```
 
 Then put the URL it printed into `js/config.js` in the app:
@@ -192,4 +235,4 @@ belongs to.
 |---|---|
 | `src/index.js` | the Worker: sync, staff mailboxes, open-shift claims, roster emails, Planning Center sign-in |
 | `schema.sql` | the D1 tables |
-| `wrangler.toml` | deploy config; holds your `database_id` |
+| `wrangler.toml` | deploy config; holds your `database_id` and the rate limit |

@@ -1,0 +1,9 @@
+{
+  "name": "rosterwarden",
+  "private": true,
+  "description": "Tooling only: the app has no build step. Pins wrangler for wr.py and worker/ (install with npm ci).",
+  "type": "module",
+  "devDependencies": {
+    "wrangler": "4.151.3"
+  }
+}

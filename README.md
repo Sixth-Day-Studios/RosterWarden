@@ -306,8 +306,10 @@ the card just says Planning Center isn't set up.
    anything. The free org can also hold sample data to test against.
 2. Put the client id in `js/config.js` (`PCO_CLIENT_ID`) and
    `worker/wrangler.toml` (`PCO_CLIENT_ID`).
-3. From `worker/`: `npx wrangler secret put PCO_CLIENT_SECRET`, then
-   `npx wrangler deploy`.
+3. Run `npm ci` once at the repo root (it installs the pinned wrangler). Then,
+   from `worker/`:
+   `npx --no-install wrangler secret put PCO_CLIENT_SECRET --config wrangler.toml`,
+   then `npx --no-install wrangler deploy --config wrangler.toml`.
 
 **Never put the secret (or a personal access token) in the app's own files.**
 This is a public static site: anything in it can be read by anyone.
@@ -387,6 +389,12 @@ reason. Tests:
 node --test tests/*.mjs
 ```
 
+and, for `wr.py`'s deploy checks (run against stand-ins, so nothing is deployed):
+
+```bash
+python tests/test_wr.py
+```
+
 ## Layout
 
 | Area | Files |
@@ -404,7 +412,7 @@ node --test tests/*.mjs
 | Shared widgets | `js/ui.js` |
 | Roster display + editing | `js/views/roster-parts.js` |
 | Encrypted sync, staff mailboxes, sign-in swap | `js/sync.js`, `js/config.js`, `worker/` |
-| Hosting | `wrangler.jsonc`, `wr.py` |
+| Hosting | `wrangler.jsonc`, `wr.py`, `_headers`, `package.json` (pins wrangler) |
 | Home-screen install | `js/install.js` |
 | Screens | `js/views/*.js` |
 | Offline | `sw.js`, `manifest.webmanifest` |
@@ -417,11 +425,29 @@ Rosterm8). It is no longer developed.
 ## Deploying
 
 The app lives at <https://rosterwarden.sixthdaystudios.com/>, served as static
-files by Cloudflare (`wrangler.jsonc`). Deploy from `main` with
-`python wr.py deploy`: it copies just the app (`index.html`, the manifest,
-`sw.js`, `css/`, `js/`, `icons/`) into `dist/` and publishes that, using the
-Cloudflare token in Guardian's `.env`. Merging to `main` does not deploy by
-itself. The old `mikeyau-ai.github.io/RosterWarden/` address is a redirect,
+files by Cloudflare (`wrangler.jsonc`). Deploying uses the wrangler version
+pinned in `package.json` and `package-lock.json`, never a fresh download, so
+install it once (and again whenever the lockfile changes):
+
+```bash
+npm ci
+```
+
+Then deploy from `main` with `python wr.py deploy`. It refuses unless this
+checkout is on `main`, has no uncommitted changes, and `node --test tests/*.mjs`
+passes, and says which. `python wr.py deploy --force` deploys anyway. It copies
+just the app (`index.html`, the manifest, `sw.js`, `_headers`, `css/`, `js/`,
+`icons/`) into `dist/` and publishes that, using the Cloudflare token in
+Guardian's `.env`. Merging to `main` does not deploy by itself. The sync worker
+is deployed separately (see `worker/README.md`).
+
+`_headers` sets the security headers on every file, including a Content
+Security Policy that lets the page talk only to the services it uses. A new
+outside service (another AI provider, a moved sync worker) has to be added to
+its `connect-src` too, or browsers will block it. `tests/headers.test.mjs`
+fails until that's done.
+
+The old `mikeyau-ai.github.io/RosterWarden/` address is a redirect,
 served from the `gh-pages` branch, that keeps any `#staff=` link part. The service
 worker serves the cached copy first and refreshes in the background; when that
 finds a changed file the open page reloads onto it within seconds. Add any new

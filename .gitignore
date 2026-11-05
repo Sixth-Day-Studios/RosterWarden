@@ -12,6 +12,9 @@ Thumbs.db
 # Wrangler (Cloudflare) local cache, wherever it gets run from
 .wrangler/
 
+# The pinned wrangler, installed by npm ci (package-lock.json is committed instead)
+node_modules/
+
 # Worker secrets for wrangler dev: never commit these
 .env
 .dev.vars

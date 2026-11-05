@@ -168,8 +168,9 @@ async function worker(path, body) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.access_token) {
     const err = new PCOError(data.error || 'Planning Center sign-in failed. Try connecting again.');
-    // A 4xx is Planning Center saying no; a 5xx is the service having a bad moment.
-    err.refused = res.status >= 400 && res.status < 500;
+    // A 4xx is Planning Center saying no; a 5xx is the service having a bad moment. A 429 is the sync
+    // worker's rate limit asking for a pause, never a refusal, so it doesn't sign the device out.
+    err.refused = res.status >= 400 && res.status < 500 && res.status !== 429;
     throw err;
   }
   return data;
