@@ -31,7 +31,12 @@ const DB = {
     };
   },
 };
-globalThis.fetch = (url, opts) => worker.fetch(new Request(url, opts), { DB });
+// Reads can be slowed (`slowReads`), so a test can have an upload queue up behind a sync still on its way.
+let slowReads = false;
+globalThis.fetch = async (url, opts) => {
+  if (slowReads && (opts?.method || 'GET') === 'GET') await new Promise((r) => { setTimeout(r, 40); });
+  return worker.fetch(new Request(url, opts), { DB });
+};
 
 /** A device: its own storage, and its own copy of the sync module. */
 async function device(name) {
@@ -148,4 +153,56 @@ test('both changed at opening: it is a conflict, and nothing uploads meanwhile',
   assert.equal((await b.reconcile()).action, 'conflict');
   await b.save({ people: ['B offline', 'more'] });
   assert.deepEqual(await onServer(a), { people: ['A'] });
+});
+
+test('a fresh device syncing several times at once is not taken for a clash with itself', async () => {
+  rows.clear();
+  const a = await device('a');
+  a.data = { people: ['first'] };
+  // Launch and a few quick visibility changes, all before the first upload is back: each found nothing
+  // stored, each uploaded over "nothing", and every one after the first was refused as a clash.
+  const results = await a.use((s) => Promise.all(Array.from({ length: 5 }, () => s.reconcile(a.data, () => {}))));
+  assert.ok(results.every((r) => r.action !== 'conflict'), JSON.stringify(results.map((r) => r.action)));
+  assert.deepEqual(await onServer(a), { people: ['first'] });
+  // And it is not left holding uploads back.
+  await a.save({ people: ['first', 'then'] });
+  assert.equal(a.conflicts, 0);
+  assert.deepEqual(await onServer(a), { people: ['first', 'then'] });
+});
+
+test('an upload queued while a sync is under way waits for it, rather than clashing with it', async () => {
+  rows.clear();
+  const a = await device('a');
+  a.data = { people: ['base'] };
+  await a.reconcile();
+  await a.use(async (s) => {
+    s.markChanged();
+    a.data = { people: ['base', 'edit'] };
+    s.schedulePush(a.data, 0);           // fires while the sync below is still on its way
+    await s.reconcile(a.data, () => {});
+    await new Promise((r) => { setTimeout(r, 80); });
+  });
+  assert.equal(a.conflicts, 0);
+  assert.deepEqual(await onServer(a), { people: ['base', 'edit'] });
+});
+
+test('an upload that was waiting while the other device\'s copy came in is dropped, not sent', async () => {
+  rows.clear();
+  const a = await device('a');
+  const b = await device('b');
+  a.data = { people: ['base'] };
+  await a.reconcile();
+  await b.reconcile();
+  await a.save({ people: ['from A'] });
+  // B has not changed anything, but an upload of its old copy is queued just as it syncs and takes A's.
+  await b.use(async (s) => {
+    slowReads = true;
+    const sync = s.reconcile(b.data, (server) => { b.data = server; });
+    s.schedulePush({ people: ['base'] }, 0);   // fires while the sync's read is still on its way
+    await sync;
+    slowReads = false;
+    await new Promise((r) => { setTimeout(r, 80); });
+  });
+  assert.deepEqual(b.data, { people: ['from A'] });
+  assert.deepEqual(await onServer(a), { people: ['from A'] }, 'B\'s old copy was not sent over it');
 });

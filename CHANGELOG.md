@@ -8,7 +8,13 @@ pull requests, which are linked so the full detail is one click away.
 
 ## 5 November 2026
 
-All in [#40], from a repo-wide audit (`AUDIT.md`).
+From [#40], a repo-wide audit (`AUDIT.md`), and [#41].
+
+- A new phone could open on "Changed on two devices" the first time it
+  synced, with no other device involved: the launch and the app coming back on
+  screen each synced at the same moment and took each other for a clash. A
+  device's syncs now run one at a time, and an upload left waiting while the
+  other device's copy comes in is dropped instead of sent over it.
 
 - Two devices on the same rosters no longer overwrite each other. If both
   changed things since they last matched (both open at once, or one offline),
@@ -246,3 +252,4 @@ First release of the web app, rebuilt from the Rosterm8 desktop app (see
 [#38]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/38
 [#39]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/39
 [#40]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/40
+[#41]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/41
