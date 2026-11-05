@@ -1,6 +1,6 @@
 # RosterWarden: repo-wide audit (5 November 2026)
 
-Audited at `ae057f8` (the same code as main after #39). Fixes are on branch **`audit-fixes`**, not yet deployed.
+Audited at `ae057f8` (the same code as main after #39). Fixes are in PR #40 (branch `audit-fixes`), released 5 November 2026.
 "Fixed" below means fixed on that branch with a regression test that fails on the old code, unless the line says otherwise.
 
 How it was checked: every file was read (four area audits ran in parallel, each with an independent verifier trying to
@@ -42,13 +42,13 @@ these lost data silently. **Overall risk before fixes: High (silent data loss ac
 | 1 | Two devices silently overwrite each other's work | Data loss | **High** | reproduced | **Fixed** |
 | 2 | A detected sync "conflict" is resolved by the next save wiping the other device | Data loss | **High** | reproduced | **Fixed** |
 | 3 | Next roster carries old shifts forward after any Team-tab change | Bug | **High** | reproduced | **Fixed** |
-| 4 | Delete all data empties every device and the account copy, while saying "on this device" | Destructive action | **High** | reproduced | **Wording fixed; behaviour is your call** |
+| 4 | Delete all data empties every device and the account copy, while saying "on this device" | Destructive action | **High** | reproduced | **Fixed** (kept global by decision; now says so) |
 | 5 | One staff link sending malformed data stops staff sync for everyone after them, for good | Reliability / Security | **Med-High** | reproduced | **Fixed** |
 | 6 | A module missing from the offline shell, so a fresh install's first offline launch is blank | Release | **Med-High** | reproduced | **Fixed** |
 | 7 | Esc on "Which rosters do you want?" overwrites the account's sync code | Data loss | **Med-High** | reproduced | **Fixed** |
 | 8 | An update can boot a mix of old and new files, leaving the app blank | Release / Reliability | Medium | simulated | **Fixed** |
 | 9 | The daily email cap is bypassed by concurrent requests | Security | Medium | reproduced | **Fixed** (needs worker deploy) |
-| 10 | The account server holds the sync code, so the operator could decrypt "unreadable" data | Compliance / privacy | Medium | code-confirmed | **Documented; your call** |
+| 10 | The account server holds the sync code, so the operator could decrypt "unreadable" data | Compliance / privacy | Medium | code-confirmed | **Fixed** (reworded everywhere) |
 
 **1. Two devices overwrite each other.** `js/sync.js` `schedulePush` uploaded the whole database with no check of what the
 server held, the worker's `PUT /db` was an unconditional upsert, and reconcile only ran at cold start.
@@ -75,8 +75,8 @@ can't tell the difference, so they keep the old behaviour once.
 database replaces the account's copy and every other device downloads it. The confirm said "on this device". It also leaves
 the sync code, account token and Planning Center tokens on the phone.
 *Fixed:* the confirm now says what happens ("here, on every other device that shares these rosters, and in your account's
-copy") when sync is on. **Open, your decision:** should it instead delete only this device (forget the code and tokens
-without pushing)? Note it already switches off staff links for every device, so it is a global action today.
+copy") when sync is on. **Decided (5 Nov):** it stays global ("erase everything, everywhere"); the confirm, README and help
+guide now say so.
 
 **5. Staff-link poison.** `cleanDates` accepted any `\d{4}-\d{2}-\d{2}`, so `2026-13-45` was stored, and `staffDates`'
 `nextDay` then threw `RangeError: Invalid time value` on every sync and on that person's page, which is where **Clear
@@ -107,8 +107,10 @@ refused send is given back. This also removes the old "sent but not counted" pat
 
 **10. Who can read the data.** `account.keepCode` sends the sync code to sixthdaystudios.com (`PUT /api/rw/key`), and the
 same operator runs the worker. So "the server stores it but cannot read it" (README, worker README, help guide) is true of
-the worker alone, not of the operator. *Done:* a caveat in `worker/README.md`. **Open, your decision:** reword the user-facing
-privacy lines, or wrap the code client-side (e.g. with a passphrase) so the account server never holds it in usable form.
+the worker alone, not of the operator. **Decided (5 Nov): reword.** The README, worker README, the Email everyone note in the app, the help guide, the product
+page, Guardian's guide and the privacy policy now say the sync server only stores a locked copy, that a signed-in account
+keeps the key so Sixth Day Studios could unlock the rosters (it never does), and that deleting the account (not signing out)
+removes the key. The privacy policy had also said signing out removed it, which the account server's code shows it doesn't.
 
 ---
 
@@ -270,8 +272,8 @@ Severity · confidence · status. File references are to `audit-fixes` unless no
 3. **Medium term:** atomic versioned service-worker caches per deploy; per-record sync merge; worker table cleanup; accessibility pass on sheets and calendars.
 4. **Tests:** staff page, sw install/offline, an end-to-end browser run of build → edit → rebuild → Next roster.
 
-## Decisions for you
+## Decisions made (5 November 2026)
 
-1. **Delete all data:** keep it as "everywhere" (now stated plainly), or make it this-device-only (forget the code and tokens without pushing)?
-2. **Privacy wording:** the account keeps the sync code, so "the server can't read it" holds for the worker alone. Reword the user-facing lines, or change the design?
-3. **Help guide:** I edited three passages in `Y:\SixthDayStudios\site\public\rosterwarden\help.html` (two-device sync, deleting a person, Delete all data). They are not deployed or committed; that folder has other uncommitted work.
+1. **Delete all data** stays global, and now says so.
+2. **Privacy wording** reworded everywhere (see #10), rather than changing the design.
+3. The help guide, product page, Guardian's guide and privacy policy on sixthdaystudios.com were updated to match, and deployed with this release.

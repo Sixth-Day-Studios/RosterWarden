@@ -1,9 +1,11 @@
 /**
  * End-to-end encrypted sync.
  *
- * Everything is encrypted on the device before it is sent, and the key never
- * leaves the device. The server stores an opaque blob under an opaque id and
- * cannot read a single name — including by whoever runs the server.
+ * Everything is encrypted on the device before it is sent. The sync server
+ * stores an opaque blob under an opaque id and cannot read a single name. The
+ * one place the key goes is a signed-in owner's account (js/account.js keeps
+ * it there so a new phone can sign in instead of typing it), so whoever runs
+ * the account server could unlock that owner's data; the app says so.
  *
  * How one secret produces two different things:
  *

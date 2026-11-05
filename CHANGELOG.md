@@ -6,36 +6,10 @@ pull requests, which are linked so the full detail is one click away.
 
 ## Unreleased
 
-- Connecting Planning Center works again. Coming back from its sign-in
-  showed "That sign-in wasn't started on this device" and connected nothing,
-  because the RosterWarden account sign-in took the return as its own.
-- **Roster** and **New Roster** are now one **Rosters** tab. **+ New roster**
-  at the top of the list opens the builder, and **← Rosters** goes back. With
-  no rosters yet, Rosters opens straight on the builder.
-- The tabs are hidden on the welcome screen, which every tab used to show
-  again. *Settings and help* at its foot still opens Settings.
-- In the builder, **Build roster** opens out into **Auto fill** (the scheduler,
-  as before) and **Manual fill** (what *Fill in by hand* was). *Send out to
-  pick* is now **Offer to staff**.
-- Delete a roster with the bin beside it in the Rosters list. The **Delete**
-  inside an opened roster has gone, leaving **Next roster** there.
-- A shift someone said they can do that is then taken off them (or its day or
-  roster removed) now shows under **Cancelled** on their staff link page until
-  the day passes, instead of just vanishing. The confirms for deleting a roster
-  and removing a shift from a day name anyone who said they can do it.
-- **Next one** is now **Next roster**. It, opening a draft, and choosing a
-  roster under **Updates** work again. They had stopped doing anything since
-  the Settings tidy-up.
-- Guardian's face at the top right of the screen opens **Ask Guardian**, so
-  help is one tap from anywhere (it's still in Settings too). Her guide now
-  matches the new Rosters tab, and she can answer how-to questions in a few
-  numbered steps instead of squeezing them into four sentences.
-- Guardian knows which screen you're on. When an answer is about a place in
-  the app, **Show me** under it closes the chat, takes you there and makes the
-  right heading or button glow. Her panel has one title and close button now,
-  not two.
-- The offline copy is now `rosterwarden-v3`, so every installed copy loads the
-  new tabs fresh.
+## 5 November 2026
+
+All in [#40], from a repo-wide audit (`AUDIT.md`).
+
 - Two devices on the same rosters no longer overwrite each other. If both
   changed things since they last matched (both open at once, or one offline),
   RosterWarden asks which copy to keep, **Keep this device's** or **Use the
@@ -83,9 +57,45 @@ pull requests, which are linked so the full detail is one click away.
   twice from a double tap, and dates shown as "Offered" or "Sent" use your
   own time zone.
 - The site now tells browsers never to show it inside another site's frame.
+- The privacy notes now say plainly who can unlock your rosters: the sync
+  server only ever stores a locked copy, but your account keeps the key so a
+  new phone can sign in, which means Sixth Day Studios could unlock them
+  (it never does). Deleting your account removes the key; signing out doesn't.
 
 ## 1 November 2026
 
+From [#37], [#38] and [#39].
+
+- Connecting Planning Center works again. Coming back from its sign-in
+  showed "That sign-in wasn't started on this device" and connected nothing,
+  because the RosterWarden account sign-in took the return as its own.
+- **Roster** and **New Roster** are now one **Rosters** tab. **+ New roster**
+  at the top of the list opens the builder, and **← Rosters** goes back. With
+  no rosters yet, Rosters opens straight on the builder.
+- The tabs are hidden on the welcome screen, which every tab used to show
+  again. *Settings and help* at its foot still opens Settings.
+- In the builder, **Build roster** opens out into **Auto fill** (the scheduler,
+  as before) and **Manual fill** (what *Fill in by hand* was). *Send out to
+  pick* is now **Offer to staff**.
+- Delete a roster with the bin beside it in the Rosters list. The **Delete**
+  inside an opened roster has gone, leaving **Next roster** there.
+- A shift someone said they can do that is then taken off them (or its day or
+  roster removed) now shows under **Cancelled** on their staff link page until
+  the day passes, instead of just vanishing. The confirms for deleting a roster
+  and removing a shift from a day name anyone who said they can do it.
+- **Next one** is now **Next roster**. It, opening a draft, and choosing a
+  roster under **Updates** work again. They had stopped doing anything since
+  the Settings tidy-up.
+- Guardian's face at the top right of the screen opens **Ask Guardian**, so
+  help is one tap from anywhere (it's still in Settings too). Her guide now
+  matches the new Rosters tab, and she can answer how-to questions in a few
+  numbered steps instead of squeezing them into four sentences.
+- Guardian knows which screen you're on. When an answer is about a place in
+  the app, **Show me** under it closes the chat, takes you there and makes the
+  right heading or button glow. Her panel has one title and close button now,
+  not two.
+- The offline copy is now `rosterwarden-v3`, so every installed copy loads the
+  new tabs fresh.
 - Settings has an *Ask Guardian* button above *Help and FAQ*. It opens the
   Sixth Day Studios help chat over the app, already knowing you're in
   RosterWarden. Close it with the cross or Esc.
@@ -232,3 +242,7 @@ First release of the web app, rebuilt from the Rosterm8 desktop app (see
 [#33]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/33
 [#34]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/34
 [#35]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/35
+[#37]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/37
+[#38]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/38
+[#39]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/39
+[#40]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/40

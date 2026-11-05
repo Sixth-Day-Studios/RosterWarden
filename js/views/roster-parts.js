@@ -552,9 +552,9 @@ async function emailEveryone(roster, people, shifts) {
       }),
       el('p', {
         className: 'faint',
-        textContent: "Your rosters are encrypted, so our server can't read them. To send these, each person's "
-          + "message goes to our server and our email service as plain text. We don't keep it; the email service "
-          + 'keeps a copy of sent emails for a short while, as any email service does.',
+        textContent: 'Your rosters are encrypted before they leave this phone. Emails can\'t be: to send these, each '
+          + "person's message goes to our server and our email service as plain text. We don't keep it; the email "
+          + 'service keeps a copy of sent emails for a short while, as any email service does.',
       }),
       err,
       el('div', { className: 'modal-actions' }, [
