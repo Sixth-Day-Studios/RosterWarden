@@ -212,8 +212,12 @@ function agree(serverAt, changedAt) {
   setStamp(AGREED_CHANGE_KEY, changedAt);
 }
 
+/** How many times this device has taken the server's copy, so an upload queued before one is dropped. */
+let serverCopies = 0;
+
 /** Record that this device has just taken the server's copy stamped `serverAt`. */
 function tookServerCopy(serverAt) {
+  serverCopies += 1;
   clearTimeout(pushTimer);   // a queued upload holds the data that was just replaced
   setStamp(CHANGED_AT_KEY, serverAt);
   agree(serverAt, serverAt);
@@ -278,7 +282,27 @@ function hold() {
  *
  * `apply(data)` is called with the server's copy when that is the one to keep.
  */
-export async function reconcile(localData, apply) {
+export function reconcile(localData, apply) {
+  return oneAtATime(() => reconcileNow(localData, apply));
+}
+
+/** The sync work under way on this device (a reconcile, an upload, settling a conflict), if any. */
+let busy = Promise.resolve();
+
+/**
+ * Run `work` once the sync work already under way here has finished. Two
+ * uploads over the same copy at once (the launch's reconcile and another when
+ * the app flickers back on screen, say) would have the second refused, and
+ * that refusal looks just like another device's clash.
+ */
+function oneAtATime(work) {
+  const run = busy.then(work, work);
+  busy = run.catch(() => { /* the caller hears about it; the next piece of work still runs */ });
+  return run;
+}
+
+/** `reconcile`, run on its own (see `oneAtATime`). */
+async function reconcileNow(localData, apply) {
   if (!isEnabled()) return { action: 'off' };
 
   const syncedAt = stamp(SYNCED_AT_KEY);
@@ -352,7 +376,12 @@ function failed(err) {
  * (it replaces the server's) or take the server's (`apply(data)` is given it).
  * Throws SyncConflict if yet another save lands meanwhile, to be asked again.
  */
-export async function resolveConflict(keepThisDevice, localData, apply) {
+export function resolveConflict(keepThisDevice, localData, apply) {
+  return oneAtATime(() => resolveNow(keepThisDevice, localData, apply));
+}
+
+/** `resolveConflict`, run on its own (see `oneAtATime`). */
+async function resolveNow(keepThisDevice, localData, apply) {
   const remote = await pull();
   if (keepThisDevice || !remote) {
     const changedAt = stamp(CHANGED_AT_KEY);
@@ -423,7 +452,11 @@ export function schedulePush(data, delay = 3000) {
   if (!isEnabled() || held) return;
   clearTimeout(pushTimer);
   setStatus('pending');
-  pushTimer = setTimeout(async () => {
+  const takenAt = serverCopies;
+  pushTimer = setTimeout(() => oneAtATime(async () => {
+    // Waited behind other sync work: if that took the server's copy (so `data` is the copy it replaced) or
+    // found a clash, there is nothing of this device's left to send.
+    if (held || takenAt !== serverCopies) return;
     const changedAt = stamp(CHANGED_AT_KEY);
     try {
       // Only over the copy this device last agreed with: if another device saved since, the server says so.
@@ -436,7 +469,7 @@ export function schedulePush(data, delay = 3000) {
       hold();
       conflictListener?.();
     }
-  }, delay);
+  }), delay);
 }
 
 /**

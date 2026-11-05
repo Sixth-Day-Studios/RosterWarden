@@ -6,6 +6,12 @@ pull requests, which are linked so the full detail is one click away.
 
 ## Unreleased
 
+- A new phone could open on "Changed on two devices" the first time it
+  synced, with no other device involved: the launch and the app coming back on
+  screen each synced at the same moment and took each other for a clash. A
+  device's syncs now run one at a time, and an upload left waiting while the
+  other device's copy comes in is dropped instead of sent over it.
+
 ## 5 November 2026
 
 All in [#40], from a repo-wide audit (`AUDIT.md`).
