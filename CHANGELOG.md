@@ -6,6 +6,10 @@ pull requests, which are linked so the full detail is one click away.
 
 ## Unreleased
 
+- Cloudflare's visit counter works again on the app. The new security policy
+  had blocked it; it counts page visits without cookies, as the privacy
+  page says.
+
 ## 6 November 2026
 
 From [#42].

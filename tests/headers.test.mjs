@@ -57,7 +57,8 @@ test('every outside host in the code is allowed by the policy, or only ever link
 
 test('the policy stays strict', () => {
   const csp = policy();
-  assert.deepEqual(csp['script-src'], ["'self'"]);
+  // Besides the app's own code, only Cloudflare Web Analytics' visit counter, which Cloudflare adds to the page.
+  assert.deepEqual(csp['script-src'], ["'self'", 'https://static.cloudflareinsights.com']);
   assert.deepEqual(csp['style-src'], ["'self'"]);
   assert.deepEqual(csp['object-src'], ["'none'"]);
   assert.deepEqual(csp['frame-ancestors'], ["'none'"]);

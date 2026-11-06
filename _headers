@@ -6,8 +6,11 @@
 # through element.style, which the policy allows), and talks only to: the sync worker (js/config.js), Planning
 # Center's API, the account server and Ask Guardian (sixthdaystudios.com), and the three AI providers
 # (js/ai.js). Adding a new outside service means adding its origin here, or the browser blocks it.
+# The one outside script is Cloudflare Web Analytics' visit counter, which Cloudflare adds to the page itself
+# (static.cloudflareinsights.com, reporting to cloudflareinsights.com). The privacy page tells visitors about it,
+# and Cloudflare already serves every file here, so allowing it adds no new party.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self' https://rosterwarden-sync.mikey-257.workers.dev https://api.planningcenteronline.com https://sixthdaystudios.com https://generativelanguage.googleapis.com https://api.anthropic.com https://api.openai.com; frame-src https://sixthdaystudios.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self'; img-src 'self'; connect-src 'self' https://rosterwarden-sync.mikey-257.workers.dev https://api.planningcenteronline.com https://sixthdaystudios.com https://generativelanguage.googleapis.com https://api.anthropic.com https://api.openai.com https://cloudflareinsights.com; frame-src https://sixthdaystudios.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
