@@ -6,14 +6,13 @@ pull requests, which are linked so the full detail is one click away.
 
 ## Unreleased
 
+## 6 November 2026
+
+From [#42] and [#43].
+
 - Cloudflare's visit counter works again on the app. The new security policy
   had blocked it; it counts page visits without cookies, as the privacy
   page says.
-
-## 6 November 2026
-
-From [#42].
-
 - The site now tells browsers exactly what it may load and talk to (a
   Content Security Policy): only its own code and styles, the sync server,
   Planning Center, your account, Ask Guardian and the AI providers. Code that
@@ -275,3 +274,4 @@ First release of the web app, rebuilt from the Rosterm8 desktop app (see
 [#40]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/40
 [#41]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/41
 [#42]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/42
+[#43]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/43
