@@ -283,7 +283,7 @@ Severity · confidence · status. File references are to `audit-fixes` unless no
 ## Follow-up audit (11 November 2026)
 
 A second pass at `282fcaa`, looking for what the first audit missed and for safer or cheaper approaches. Fixed in
-#44 (released 11 November) and its follow-up pull request. "Fixed" means with a regression test that fails on the old
+#44 (released 11 November) and its follow-up, #45 (released 12 November). "Fixed" means with a regression test that fails on the old
 code, unless the line says otherwise.
 
 ### New findings

@@ -6,6 +6,10 @@ pull requests, which are linked so the full detail is one click away.
 
 ## Unreleased
 
+## 12 November 2026
+
+From [#45].
+
 - Building a big roster is about six times faster (100 people over 90 days
   went from about 0.9 seconds to 0.15), so the screen no longer hangs while
   it works.
@@ -331,3 +335,4 @@ First release of the web app, rebuilt from the Rosterm8 desktop app (see
 [#42]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/42
 [#43]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/43
 [#44]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/44
+[#45]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/45
