@@ -22,6 +22,13 @@ pull requests, which are linked so the full detail is one click away.
   The biggest backup it accepts is now just under the database's own limit
   (about 1.9 MB), so one that is accepted can always be stored. Needs a
   worker deploy.
+- When something goes wrong inside the sync server, the app is now told so
+  instead of being left to think the phone is offline, so a server fault
+  counts toward the "not being backed up" warning above. Needs a worker
+  deploy.
+- The deploy tool (wrangler) is updated from 4.151.3 to 4.160.0, which clears
+  three security advisories in its own dependencies. Nothing in the app
+  itself used them. Run `npm ci` again before the next deploy.
 
 ## 6 November 2026
 

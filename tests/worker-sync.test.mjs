@@ -118,3 +118,21 @@ test('nothing oversized gets in beside the ciphertext, or under the database\'s 
   // A real nonce and ISO stamp still go in.
   assert.equal((await send(`/db/${ID}`, { ciphertext: 'A', iv: 'AAAAAAAAAAAAAAAA', updatedAt: new Date().toISOString(), base: '' })).status, 200);
 });
+
+test('a fault inside the worker is answered as a readable 500 the app can see, not a bare failure', async () => {
+  // A database that refuses everything, as D1 does over its limits or during an outage.
+  const env = { DB: { prepare() { throw new Error('D1_ERROR: database is unavailable'); } } };
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    const res = await worker.fetch(new Request(`https://w.test/db/${ID}`, { headers: { Origin: 'https://app.test' } }), env);
+    assert.equal(res.status, 500);
+    // With the CORS header, or the browser hides the answer and the app can only say "offline".
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://app.test');
+    const { error } = await res.json();
+    assert.match(error, /went wrong on the server/);
+    assert.doesNotMatch(error, /D1_ERROR/, 'the fault itself is not passed on');
+  } finally {
+    console.error = quiet;
+  }
+});
