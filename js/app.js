@@ -357,6 +357,9 @@ function init() {
   });
   // A background upload that finds another device saved first asks which copy to keep.
   sync.onConflict(chooseCopy);
+  // Backing up that the server keeps refusing is said once, where a dropped connection stays quiet.
+  sync.onTrouble((reason) => toast(`Your rosters aren't being backed up. ${reason} They're still safe on this device.`,
+    { label: 'Settings', onclick: () => show('settings') }));
   // Coming back to the app is a good moment to catch up with another device, and to look for dates staff
   // have sent. A phone can keep the app open for days, so this is not left to the next cold start.
   document.addEventListener('visibilitychange', () => {

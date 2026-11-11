@@ -63,8 +63,33 @@
  */
 const USER_AGENT = 'RosterWarden (https://sixthdaystudios.com)';
 
-/** Biggest blob accepted, in bytes. A large roster is a few tens of KB. */
-const MAX_BYTES = 2 * 1024 * 1024;
+/**
+ * Biggest blob accepted, in bytes. A large roster is a few tens of KB. Kept under the database's own limit
+ * for one value (2,000,000 bytes), so a blob that passes this check can always be stored.
+ */
+const MAX_BYTES = 1900000;
+
+/** Longest `iv` accepted, in characters: a 12-byte nonce is 16 in base64. */
+const IV_MAX = 24;
+
+/** Longest `updatedAt` or `base` stamp accepted, in characters: an ISO time is 24. */
+const STAMP_MAX = 40;
+
+/**
+ * Whether a request says up front (Content-Length) that its body is bigger than anything holding `max`
+ * bytes of ciphertext could be, so it can be refused before the body is read.
+ */
+function bodyTooBig(request, max) {
+  return Number(request.headers.get('Content-Length')) > max + 1024;
+}
+
+/**
+ * Whether the small fields beside the ciphertext are too long. Each endpoint caps its ciphertext; without
+ * this, megabytes could ride along in `iv` or a stamp instead.
+ */
+function fieldsTooBig(iv, ...stamps) {
+  return iv.length > IV_MAX || stamps.some((s) => typeof s === 'string' && s.length > STAMP_MAX);
+}
 
 /** Biggest mailbox accepted, in bytes: a person's dates, a note and their shifts. */
 const BOX_MAX_BYTES = 64 * 1024;
@@ -189,61 +214,75 @@ async function withinRateLimit(request, env) {
 }
 
 export default {
-  /** Route one request. */
+  /**
+   * Answer one request. Anything that goes wrong inside (the database refusing a write, say) is answered
+   * as a readable 500 with the CORS headers: an uncaught error would reach the app with none, which a
+   * browser reports as a failed connection, so the app would say "offline" about a server fault.
+   */
   async fetch(request, env) {
     const origin = request.headers.get('Origin');
-    const url = new URL(request.url);
-
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: cors(origin) });
+    try {
+      return await route(request, env, origin);
+    } catch (err) {
+      console.error(err);
+      return json({ error: 'Something went wrong on the server. Try again in a moment.' }, 500, origin);
     }
-
-    // Everything else counts against its client's rate limit. Preflights above don't: refusing one would
-    // reach the app as a bare network error instead of this readable 429.
-    if (!(await withinRateLimit(request, env))) {
-      return json({ error: 'Too many requests from this connection. Try again in a minute.' }, 429, origin);
-    }
-
-    if (request.method === 'POST' && url.pathname === '/pco/token') {
-      return pcoToken(request, env, origin, 'authorization_code');
-    }
-    if (request.method === 'POST' && url.pathname === '/pco/refresh') {
-      return pcoToken(request, env, origin, 'refresh_token');
-    }
-    if (request.method === 'POST' && url.pathname === '/pco/revoke') {
-      return pcoRevoke(request, env, origin);
-    }
-
-    if (request.method === 'POST' && url.pathname === '/email') return emailRoster(request, env, origin);
-    if (request.method === 'POST' && url.pathname === '/boxes') return boxBatch(request, env, origin);
-    if (request.method === 'POST' && url.pathname === '/claims') return claimBatch(request, env, origin);
-    const claim = url.pathname.match(/^\/claim\/([^/]+)$/);
-    if (claim) {
-      if (!ID_PATTERN.test(claim[1])) return json({ error: 'Bad id' }, 400, origin);
-      if (request.method === 'PUT') return claimTake(claim[1], request, env, origin);
-      if (request.method === 'DELETE') return claimRelease(claim[1], request, env, origin);
-      return json({ error: 'Method not allowed' }, 405, origin);
-    }
-    const box = url.pathname.match(/^\/box\/([^/]+)$/);
-    if (box) {
-      if (!ID_PATTERN.test(box[1])) return json({ error: 'Bad id' }, 400, origin);
-      if (request.method === 'GET') return boxRead(box[1], env, origin);
-      if (request.method === 'PUT') return boxWrite(box[1], request, env, origin);
-      if (request.method === 'DELETE') return boxRevoke(box[1], env, origin);
-      return json({ error: 'Method not allowed' }, 405, origin);
-    }
-
-    const match = url.pathname.match(/^\/db\/([^/]+)$/);
-    if (!match) return json({ error: 'Not found' }, 404, origin);
-
-    const id = match[1];
-    if (!ID_PATTERN.test(id)) return json({ error: 'Bad id' }, 400, origin);
-
-    if (request.method === 'GET') return read(id, env, origin);
-    if (request.method === 'PUT') return write(id, request, env, origin);
-    return json({ error: 'Method not allowed' }, 405, origin);
   },
 };
+
+/** Route one request to its endpoint. */
+async function route(request, env, origin) {
+  const url = new URL(request.url);
+
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: cors(origin) });
+  }
+
+  // Everything else counts against its client's rate limit. Preflights above don't: refusing one would
+  // reach the app as a bare network error instead of this readable 429.
+  if (!(await withinRateLimit(request, env))) {
+    return json({ error: 'Too many requests from this connection. Try again in a minute.' }, 429, origin);
+  }
+
+  if (request.method === 'POST' && url.pathname === '/pco/token') {
+    return pcoToken(request, env, origin, 'authorization_code');
+  }
+  if (request.method === 'POST' && url.pathname === '/pco/refresh') {
+    return pcoToken(request, env, origin, 'refresh_token');
+  }
+  if (request.method === 'POST' && url.pathname === '/pco/revoke') {
+    return pcoRevoke(request, env, origin);
+  }
+
+  if (request.method === 'POST' && url.pathname === '/email') return emailRoster(request, env, origin);
+  if (request.method === 'POST' && url.pathname === '/boxes') return boxBatch(request, env, origin);
+  if (request.method === 'POST' && url.pathname === '/claims') return claimBatch(request, env, origin);
+  const claim = url.pathname.match(/^\/claim\/([^/]+)$/);
+  if (claim) {
+    if (!ID_PATTERN.test(claim[1])) return json({ error: 'Bad id' }, 400, origin);
+    if (request.method === 'PUT') return claimTake(claim[1], request, env, origin);
+    if (request.method === 'DELETE') return claimRelease(claim[1], request, env, origin);
+    return json({ error: 'Method not allowed' }, 405, origin);
+  }
+  const box = url.pathname.match(/^\/box\/([^/]+)$/);
+  if (box) {
+    if (!ID_PATTERN.test(box[1])) return json({ error: 'Bad id' }, 400, origin);
+    if (request.method === 'GET') return boxRead(box[1], env, origin);
+    if (request.method === 'PUT') return boxWrite(box[1], request, env, origin);
+    if (request.method === 'DELETE') return boxRevoke(box[1], env, origin);
+    return json({ error: 'Method not allowed' }, 405, origin);
+  }
+
+  const match = url.pathname.match(/^\/db\/([^/]+)$/);
+  if (!match) return json({ error: 'Not found' }, 404, origin);
+
+  const id = match[1];
+  if (!ID_PATTERN.test(id)) return json({ error: 'Bad id' }, 400, origin);
+
+  if (request.method === 'GET') return read(id, env, origin);
+  if (request.method === 'PUT') return write(id, request, env, origin);
+  return json({ error: 'Method not allowed' }, 405, origin);
+}
 
 /** One mailbox: its contents, 404 if never written, 410 once its link was replaced. */
 async function boxRead(id, env, origin) {
@@ -255,6 +294,7 @@ async function boxRead(id, env, origin) {
 
 /** Store a mailbox's contents - refused once its link has been replaced. */
 async function boxWrite(id, request, env, origin) {
+  if (bodyTooBig(request, BOX_MAX_BYTES)) return json({ error: 'Too large' }, 413, origin);
   let body;
   try {
     body = await request.json();
@@ -265,7 +305,7 @@ async function boxWrite(id, request, env, origin) {
   if (typeof ciphertext !== 'string' || typeof iv !== 'string') {
     return json({ error: 'ciphertext and iv are required' }, 400, origin);
   }
-  if (ciphertext.length > BOX_MAX_BYTES) return json({ error: 'Too large' }, 413, origin);
+  if (ciphertext.length > BOX_MAX_BYTES || fieldsTooBig(iv, updatedAt)) return json({ error: 'Too large' }, 413, origin);
 
   const row = await env.DB.prepare(BOX_SQL.read).bind(id).first();
   if (row?.revoked) return json({ error: 'This link has been replaced' }, 410, origin);
@@ -324,12 +364,13 @@ async function bodyOf(request) {
  * first gets it; reading the row back says who that was.
  */
 async function claimTake(id, request, env, origin) {
+  if (bodyTooBig(request, CLAIM_MAX_BYTES)) return json({ error: 'Too large' }, 413, origin);
   const body = await bodyOf(request);
   const { ciphertext, iv, token } = body || {};
   if (typeof ciphertext !== 'string' || typeof iv !== 'string' || !ID_PATTERN.test(token || '')) {
     return json({ error: 'ciphertext, iv and token are required' }, 400, origin);
   }
-  if (ciphertext.length > CLAIM_MAX_BYTES) return json({ error: 'Too large' }, 413, origin);
+  if (ciphertext.length > CLAIM_MAX_BYTES || fieldsTooBig(iv)) return json({ error: 'Too large' }, 413, origin);
   const by = await tokenHash(token);
   await env.DB.prepare(CLAIM_SQL.take).bind(id, ciphertext, iv, by, new Date().toISOString()).run();
   const row = await env.DB.prepare(CLAIM_SQL.read).bind(id).first();
@@ -477,6 +518,7 @@ async function read(id, env, origin) {
 
 /** Store the blob for `id`, replacing whatever was there. */
 async function write(id, request, env, origin) {
+  if (bodyTooBig(request, MAX_BYTES)) return json({ error: 'Too large' }, 413, origin);
   let body;
   try {
     body = await request.json();
@@ -488,7 +530,7 @@ async function write(id, request, env, origin) {
   if (typeof ciphertext !== 'string' || typeof iv !== 'string') {
     return json({ error: 'ciphertext and iv are required' }, 400, origin);
   }
-  if (ciphertext.length > MAX_BYTES) {
+  if (ciphertext.length > MAX_BYTES || fieldsTooBig(iv, updatedAt, base)) {
     return json({ error: 'Too large' }, 413, origin);
   }
 

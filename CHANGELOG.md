@@ -6,6 +6,34 @@ pull requests, which are linked so the full detail is one click away.
 
 ## Unreleased
 
+## 11 November 2026
+
+From [#44].
+
+- Settings now says when your rosters were last backed up, just above
+  **Delete all data**. If the sync server keeps refusing a backup (for
+  example, the rosters have grown too big), the app tells you once and
+  Settings says why, instead of failing without a word. Being offline is
+  still quiet, as before.
+- A reply from a staff link is no longer skipped when that person's phone
+  has the wrong date or time. Before, one send from a phone running fast
+  could hide everything they sent afterwards.
+- Opening the app without setting up a workplace no longer leaves an empty
+  copy on the sync server. The first copy is made once there is a workplace
+  to keep.
+- The sync server holds every part of what it stores to a sensible size, not
+  only the main part, and refuses an oversized request before reading it.
+  The biggest backup it accepts is now just under the database's own limit
+  (about 1.9 MB), so one that is accepted can always be stored. Needs a
+  worker deploy.
+- When something goes wrong inside the sync server, the app is now told so
+  instead of being left to think the phone is offline, so a server fault
+  counts toward the "not being backed up" warning above. Needs a worker
+  deploy.
+- The deploy tool (wrangler) is updated from 4.151.3 to 4.160.0, which clears
+  three security advisories in its own dependencies. Nothing in the app
+  itself used them. Run `npm ci` again before the next deploy.
+
 ## 6 November 2026
 
 From [#42] and [#43].
@@ -275,3 +303,4 @@ First release of the web app, rebuilt from the Rosterm8 desktop app (see
 [#41]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/41
 [#42]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/42
 [#43]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/43
+[#44]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/44

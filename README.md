@@ -327,6 +327,12 @@ in, the code exists only on that device, so nobody else can read the data and
 the Rosters screen asks them to sign in. Deleting the account removes the kept
 code; signing out does not.
 
+Nothing is uploaded until the device has a workplace, so merely opening the app
+leaves nothing on the server. **Settings** says when the rosters were last
+backed up; a dropped connection stays quiet, but when the server refuses three
+backups in a row (too big, say) the app says so once and Settings gives the
+reason.
+
 There are no export or restore buttons; the sync code and account replace them.
 
 Two devices on the same rosters never silently overwrite each other. Each

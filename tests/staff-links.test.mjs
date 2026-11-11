@@ -315,3 +315,25 @@ test('switching off one person\'s link leaves everyone else\'s working', async (
   await assert.rejects(staffSends(keyOf(sam.id), ['2026-11-08']), link.LinkReplaced);
   await staffSends(keyOf(bob.id), ['2026-11-08']);
 });
+
+test('a send from a phone whose clock is behind the last send is still taken in', async () => {
+  const sam = setUp();
+  await staff.createLink(sam.id);
+  const key = store.people()[0].staffLink.key;
+  await staffSends(key, ['2026-11-08']);
+  await staff.collect();
+
+  // Their next send comes from a phone whose clock is wrong, so its stamp is years before the last one.
+  const { encrypt } = await import('../js/sync.js');
+  const { SYNC_URL } = await import('../js/config.js');
+  const { inId, cryptoKey } = await link.boxesFor(key);
+  await fetch(`${SYNC_URL}/box/${inId}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...(await encrypt({ awayDates: ['2026-11-15'], note: '' }, cryptoKey)), updatedAt: '2020-01-01T00:00:00.000Z' }),
+  });
+  const changed = await staff.collect();
+  assert.equal(changed.length, 1, 'the send is read, whatever its stamp says');
+  assert.deepEqual(staff.staffDates(store.people()[0]), ['2026-11-15']);
+  // The same send again changes nothing.
+  assert.equal((await staff.collect()).length, 0);
+});

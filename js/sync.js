@@ -44,6 +44,12 @@ const CHANGED_AT_KEY = 'rosterwarden.sync.changed';
  */
 const AGREED_CHANGE_KEY = 'rosterwarden.sync.agreedChange';
 
+/** When this device last matched the server, by this device's clock: the "Backed up" time in Settings. */
+const OK_AT_KEY = 'rosterwarden.sync.okAt';
+
+/** How many uploads or checks in a row the server must refuse before the person is told (see `onTrouble`). */
+const TROUBLE_AFTER = 3;
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -311,7 +317,7 @@ async function reconcileNow(localData, apply) {
   try {
     remote = await pull();
   } catch (err) {
-    setStatus('error', err.message);
+    setStatus('error', err.message, err.lasting);
     return { action: 'failed', message: err.message };
   }
 
@@ -319,8 +325,9 @@ async function reconcileNow(localData, apply) {
   const changedAt = stamp(CHANGED_AT_KEY);
   const deviceChanged = deviceMovedOn();
 
-  // Nothing stored yet: this device seeds it.
+  // Nothing stored yet: this device seeds it, once it has something to keep.
   if (!remote) {
+    if (isEmpty(localData)) return { action: 'nothing-yet' };
     try {
       agree(await push(localData, currentCode(), syncedAt), changedAt);
       held = false;
@@ -367,8 +374,17 @@ function failed(err) {
     hold();
     return { action: 'conflict', at: err.updatedAt };
   }
-  setStatus('error', err.message);
+  setStatus('error', err.message, err.lasting);
   return { action: 'failed', message: err.message };
+}
+
+/**
+ * Whether `data` is a database with no workplace in it yet. Nothing is uploaded
+ * for one until the server already holds a copy: everyone who merely opens the
+ * app would otherwise leave an empty row on the server for good.
+ */
+function isEmpty(data) {
+  return Array.isArray(data?.orgs) && data.orgs.length === 0;
 }
 
 /**
@@ -421,22 +437,63 @@ export function isConfigured() {
 
 // ─── transport ───────────────────────────────────────────────────────────
 
-/** Raised for anything the user should see rather than a stack trace. */
-export class SyncError extends Error {}
+/**
+ * Raised for anything the user should see rather than a stack trace. `lasting`
+ * is true when the server answered and said no (or its copy wouldn't unlock):
+ * unlike a dropped connection, trying again later is not likely to fix it.
+ */
+export class SyncError extends Error {
+  constructor(message, lasting = false) {
+    super(message);
+    this.lasting = lasting;
+  }
+}
 
 // ─── background pushing ──────────────────────────────────────────────────
 
 /** Pending debounce timer for an automatic push. */
 let pushTimer = null;
 
-/** Most recent automatic-sync outcome. Nothing on screen shows it since the sync screen went; kept for checking from the console. */
+/** Most recent automatic-sync outcome. Settings shows it through `backupState`. */
 export const status = { state: 'idle', at: null, message: '' };
 
-/** Update the shared status. */
-function setStatus(state, message = '') {
+/** Lasting failures in a row (see SyncError), back to 0 whenever a sync works. */
+let refusals = 0;
+
+/** Called once when sync has failed TROUBLE_AFTER times running (see `onTrouble`). */
+let troubleListener = null;
+
+/**
+ * Register the one listener told, with the reason, when backing up keeps being
+ * refused. Sync failures are otherwise quiet, which is right for a dropped
+ * connection but not for a server that will keep saying no: the person would
+ * go on believing a lost phone could get its rosters back.
+ */
+export function onTrouble(fn) {
+  troubleListener = fn;
+}
+
+/**
+ * How backing up stands on this device, for Settings: `okAt` is when it last
+ * matched the server ('' if never), `problem` the reason the latest try failed
+ * ('' if it didn't).
+ */
+export function backupState() {
+  return { okAt: stamp(OK_AT_KEY), problem: status.state === 'error' ? status.message : '' };
+}
+
+/** Update the shared status. `lasting` marks an error the server will likely repeat (see SyncError). */
+function setStatus(state, message = '', lasting = false) {
   status.state = state;
   status.message = message;
   status.at = new Date().toISOString();
+  if (state === 'synced') {
+    refusals = 0;
+    setStamp(OK_AT_KEY, status.at);
+  } else if (state === 'error' && lasting) {
+    refusals += 1;
+    if (refusals === TROUBLE_AFTER) troubleListener?.(message);
+  }
 }
 
 /**
@@ -457,6 +514,8 @@ export function schedulePush(data, delay = 3000) {
     // Waited behind other sync work: if that took the server's copy (so `data` is the copy it replaced) or
     // found a clash, there is nothing of this device's left to send.
     if (held || takenAt !== serverCopies) return;
+    // Nothing here yet and nothing of this device's on the server: no empty copy is made (see `isEmpty`).
+    if (!stamp(SYNCED_AT_KEY) && isEmpty(data)) return;
     const changedAt = stamp(CHANGED_AT_KEY);
     try {
       // Only over the copy this device last agreed with: if another device saved since, the server says so.
@@ -465,7 +524,7 @@ export function schedulePush(data, delay = 3000) {
       agree(at, changedAt);
       setStatus('synced');
     } catch (err) {
-      if (!(err instanceof SyncConflict)) { setStatus('error', err.message); return; }
+      if (!(err instanceof SyncConflict)) { setStatus('error', err.message, err.lasting); return; }
       hold();
       conflictListener?.();
     }
@@ -496,7 +555,8 @@ export async function push(data, code = currentCode(), base = undefined) {
     throw new SyncError('Could not reach the sync server. Your data is still safe on this device.');
   }
   if (res.status === 409) throw new SyncConflict((await res.json().catch(() => ({}))).updatedAt ?? null);
-  if (!res.ok) throw new SyncError(`Sync server returned ${res.status}.`);
+  if (res.status === 413) throw new SyncError('Your rosters have grown too big to back up. Deleting old rosters makes room.', true);
+  if (!res.ok) throw new SyncError(`Sync server returned ${res.status}.`, true);
   return updatedAt;
 }
 
@@ -517,7 +577,7 @@ export async function pull(code = currentCode()) {
     throw new SyncError('Could not reach the sync server.');
   }
   if (res.status === 404) return null;
-  if (!res.ok) throw new SyncError(`Sync server returned ${res.status}.`);
+  if (!res.ok) throw new SyncError(`Sync server returned ${res.status}.`, true);
 
   const body = await res.json();
   try {
@@ -525,6 +585,6 @@ export async function pull(code = currentCode()) {
   } catch {
     // A wrong code lands here: the id happened to exist but the key does not
     // decrypt it. Far more likely is a typo than corruption, so say that.
-    throw new SyncError('That code did not unlock the data — check it and try again.');
+    throw new SyncError('That code did not unlock the data — check it and try again.', true);
   }
 }

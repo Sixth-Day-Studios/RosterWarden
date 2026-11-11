@@ -93,3 +93,46 @@ test('a token Planning Center refuses is still a 400, so the app signs out', asy
   assert.equal(res.status, 400);
   assert.match((await res.json()).error, /invalid_grant/);
 });
+
+test('nothing oversized gets in beside the ciphertext, or under the database\'s own limit', async () => {
+  const env = { DB: fakeDB() };
+  const send = (path, body, headers = {}) => worker.fetch(new Request(`https://w.test${path}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body),
+  }), env);
+  const big = 'x'.repeat(5000);
+
+  // Each endpoint caps its ciphertext; the fields beside it are held to their real sizes too.
+  for (const path of [`/db/${ID}`, `/box/${ID}`, `/claim/${ID}`]) {
+    assert.equal((await send(path, { ciphertext: 'A', iv: big, token: ID })).status, 413, `${path}: a long iv`);
+  }
+  assert.equal((await send(`/db/${ID}`, { ciphertext: 'A', iv: 'i', updatedAt: big })).status, 413, 'a long stamp');
+  assert.equal((await send(`/db/${ID}`, { ciphertext: 'A', iv: 'i', updatedAt: 't', base: big })).status, 413, 'a long base');
+  assert.equal((await send(`/box/${ID}`, { ciphertext: 'A', iv: 'i', updatedAt: big })).status, 413, 'a long mailbox stamp');
+
+  // The database stores at most 2,000,000 bytes in one value: a blob just under that is refused here, readably.
+  assert.equal((await send(`/db/${ID}`, { ciphertext: 'x'.repeat(1950000), iv: 'i' })).status, 413);
+  // A body that says up front it is too big is refused before it is read.
+  assert.equal((await send(`/claim/${ID}`, { ciphertext: 'A', iv: 'i', token: ID }, { 'Content-Length': '500000' })).status, 413);
+  assert.equal(env.DB.rows.size, 0, 'none of it was stored');
+
+  // A real nonce and ISO stamp still go in.
+  assert.equal((await send(`/db/${ID}`, { ciphertext: 'A', iv: 'AAAAAAAAAAAAAAAA', updatedAt: new Date().toISOString(), base: '' })).status, 200);
+});
+
+test('a fault inside the worker is answered as a readable 500 the app can see, not a bare failure', async () => {
+  // A database that refuses everything, as D1 does over its limits or during an outage.
+  const env = { DB: { prepare() { throw new Error('D1_ERROR: database is unavailable'); } } };
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    const res = await worker.fetch(new Request(`https://w.test/db/${ID}`, { headers: { Origin: 'https://app.test' } }), env);
+    assert.equal(res.status, 500);
+    // With the CORS header, or the browser hides the answer and the app can only say "offline".
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://app.test');
+    const { error } = await res.json();
+    assert.match(error, /went wrong on the server/);
+    assert.doesNotMatch(error, /D1_ERROR/, 'the fault itself is not passed on');
+  } finally {
+    console.error = quiet;
+  }
+});
