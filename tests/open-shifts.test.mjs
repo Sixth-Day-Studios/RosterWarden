@@ -20,6 +20,8 @@ const boxes = new Map();
 const claims = new Map();
 /** A stand-in D1 answering exactly the worker's mailbox and claim statements. */
 const DB = {
+  // What D1's batch() gives: each statement's rows, in order.
+  batch: async (statements) => Promise.all(statements.map(async (s) => ({ results: [await s.first()].filter(Boolean) }))),
   prepare(sql) {
     return {
       bind(...a) {
