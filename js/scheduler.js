@@ -28,10 +28,24 @@
 /** Sentinel "has never worked" value; any real day sorts after it. */
 const NEVER = -Infinity;
 
+/**
+ * Day numbers already worked out, by date string. Building a roster asks for the same few hundred dates
+ * (the rostered days, everyone's away dates) hundreds of thousands of times, and parsing each one afresh
+ * was most of the time a big build took.
+ */
+const dayNumbers = new Map();
+
 /** Convert a "YYYY-MM-DD" string to a whole number of days since the epoch. */
 export function toDays(iso) {
-  const [y, m, d] = iso.split('-').map(Number);
-  return Math.floor(Date.UTC(y, m - 1, d) / 86400000);
+  let n = dayNumbers.get(iso);
+  if (n === undefined) {
+    const [y, m, d] = iso.split('-').map(Number);
+    n = Math.floor(Date.UTC(y, m - 1, d) / 86400000);
+    // Kept bounded: a year of dates is a few hundred entries, so this only ever trips on something odd.
+    if (dayNumbers.size > 20000) dayNumbers.clear();
+    dayNumbers.set(iso, n);
+  }
+  return n;
 }
 
 /** Convert a whole-day number back to a "YYYY-MM-DD" string. */

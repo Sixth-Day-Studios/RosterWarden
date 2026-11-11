@@ -3,10 +3,11 @@ credentials from Guardian's .env (CLOUDFLARE_API_TOKEN), so the token is never t
 
     npm ci                       (once, and after package-lock.json changes: installs the pinned wrangler)
     python wr.py deploy          (publishes the app to rosterwarden.sixthdaystudios.com)
-    python wr.py deploy --force  (publishes even when the checks below fail)
+    python wr.py worker-deploy   (publishes the sync worker in worker/, with its own wrangler.toml)
+    python wr.py deploy --force  (publishes even when the checks below fail; worker-deploy takes it too)
 
-A deploy only goes ahead from a clean checkout of main whose tests pass, so what goes live is always
-something committed and tested. The sync worker in worker/ is deployed separately, from that folder.
+Either deploy only goes ahead from a clean checkout of main (or one at the very commit origin/main is at)
+whose tests pass, so what goes live is always something committed and tested.
 """
 import os
 import shutil
@@ -50,8 +51,10 @@ def deploy_problems(run=subprocess.run, out=sys.stderr):
 
     problems = []
     branch = git("rev-parse", "--abbrev-ref", "HEAD").strip() or "unknown"
-    if branch != "main":
-        problems.append(f"this checkout is on '{branch}', not main")
+    # A second worktree can't check main out while another has it, so being at main's own commit counts too.
+    head, main = git("rev-parse", "HEAD").strip(), git("rev-parse", "origin/main").strip()
+    if branch != "main" and not (head and head == main):
+        problems.append(f"this checkout is on '{branch}', not main, and isn't at the commit origin/main is at")
     changes = git("status", "--porcelain").splitlines()
     if changes:
         listed = "\n".join(f"      {line}" for line in changes[:10])
@@ -86,13 +89,29 @@ def split_force(args):
     return [a for a in args if a != "--force"], "--force" in args
 
 
+def worker_deploy(args):
+    """Turn `worker-deploy [more]` into the wrangler arguments and folder that publish the sync worker.
+
+    Always with the worker's own --config: without it wrangler can pick up the app's config and redeploy
+    the app instead. Returns (wrangler arguments, folder to run in), or None when `args` is something else.
+    """
+    if args[:1] != ["worker-deploy"]:
+        return None
+    return ["deploy", "--config", "wrangler.toml", *args[1:]], os.path.join(HERE, "worker")
+
+
 def main(argv):
     """Check (for a deploy), stage, then run the pinned wrangler with the Cloudflare credentials."""
     args, force = split_force(argv)
+    cwd = HERE
     if not os.path.isdir(os.path.join(HERE, "node_modules", "wrangler")):
         print("The pinned wrangler isn't installed. Run `npm ci` here first.", file=sys.stderr)
         return 1
-    if args[:1] == ["deploy"]:
+    if worker_deploy(args):
+        if not may_deploy(force):
+            return 1
+        args, cwd = worker_deploy(args)
+    elif args[:1] == ["deploy"]:
         if not may_deploy(force):
             return 1
         stage_app()
@@ -102,7 +121,7 @@ def main(argv):
     env = {**os.environ, "CLOUDFLARE_API_TOKEN": secrets["CLOUDFLARE_API_TOKEN"], "CLOUDFLARE_ACCOUNT_ID": ACCOUNT_ID,
            "WRANGLER_SEND_METRICS": "false"}
     # --no-install: use the wrangler pinned in package-lock.json, never fetch whatever npm has today.
-    return subprocess.call(["npx", "--no-install", "wrangler", *args], env=env, shell=os.name == "nt", cwd=HERE)
+    return subprocess.call(["npx", "--no-install", "wrangler", *args], env=env, shell=os.name == "nt", cwd=cwd)
 
 
 if __name__ == "__main__":
