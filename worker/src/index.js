@@ -63,8 +63,33 @@
  */
 const USER_AGENT = 'RosterWarden (https://sixthdaystudios.com)';
 
-/** Biggest blob accepted, in bytes. A large roster is a few tens of KB. */
-const MAX_BYTES = 2 * 1024 * 1024;
+/**
+ * Biggest blob accepted, in bytes. A large roster is a few tens of KB. Kept under the database's own limit
+ * for one value (2,000,000 bytes), so a blob that passes this check can always be stored.
+ */
+const MAX_BYTES = 1900000;
+
+/** Longest `iv` accepted, in characters: a 12-byte nonce is 16 in base64. */
+const IV_MAX = 24;
+
+/** Longest `updatedAt` or `base` stamp accepted, in characters: an ISO time is 24. */
+const STAMP_MAX = 40;
+
+/**
+ * Whether a request says up front (Content-Length) that its body is bigger than anything holding `max`
+ * bytes of ciphertext could be, so it can be refused before the body is read.
+ */
+function bodyTooBig(request, max) {
+  return Number(request.headers.get('Content-Length')) > max + 1024;
+}
+
+/**
+ * Whether the small fields beside the ciphertext are too long. Each endpoint caps its ciphertext; without
+ * this, megabytes could ride along in `iv` or a stamp instead.
+ */
+function fieldsTooBig(iv, ...stamps) {
+  return iv.length > IV_MAX || stamps.some((s) => typeof s === 'string' && s.length > STAMP_MAX);
+}
 
 /** Biggest mailbox accepted, in bytes: a person's dates, a note and their shifts. */
 const BOX_MAX_BYTES = 64 * 1024;
@@ -255,6 +280,7 @@ async function boxRead(id, env, origin) {
 
 /** Store a mailbox's contents - refused once its link has been replaced. */
 async function boxWrite(id, request, env, origin) {
+  if (bodyTooBig(request, BOX_MAX_BYTES)) return json({ error: 'Too large' }, 413, origin);
   let body;
   try {
     body = await request.json();
@@ -265,7 +291,7 @@ async function boxWrite(id, request, env, origin) {
   if (typeof ciphertext !== 'string' || typeof iv !== 'string') {
     return json({ error: 'ciphertext and iv are required' }, 400, origin);
   }
-  if (ciphertext.length > BOX_MAX_BYTES) return json({ error: 'Too large' }, 413, origin);
+  if (ciphertext.length > BOX_MAX_BYTES || fieldsTooBig(iv, updatedAt)) return json({ error: 'Too large' }, 413, origin);
 
   const row = await env.DB.prepare(BOX_SQL.read).bind(id).first();
   if (row?.revoked) return json({ error: 'This link has been replaced' }, 410, origin);
@@ -324,12 +350,13 @@ async function bodyOf(request) {
  * first gets it; reading the row back says who that was.
  */
 async function claimTake(id, request, env, origin) {
+  if (bodyTooBig(request, CLAIM_MAX_BYTES)) return json({ error: 'Too large' }, 413, origin);
   const body = await bodyOf(request);
   const { ciphertext, iv, token } = body || {};
   if (typeof ciphertext !== 'string' || typeof iv !== 'string' || !ID_PATTERN.test(token || '')) {
     return json({ error: 'ciphertext, iv and token are required' }, 400, origin);
   }
-  if (ciphertext.length > CLAIM_MAX_BYTES) return json({ error: 'Too large' }, 413, origin);
+  if (ciphertext.length > CLAIM_MAX_BYTES || fieldsTooBig(iv)) return json({ error: 'Too large' }, 413, origin);
   const by = await tokenHash(token);
   await env.DB.prepare(CLAIM_SQL.take).bind(id, ciphertext, iv, by, new Date().toISOString()).run();
   const row = await env.DB.prepare(CLAIM_SQL.read).bind(id).first();
@@ -477,6 +504,7 @@ async function read(id, env, origin) {
 
 /** Store the blob for `id`, replacing whatever was there. */
 async function write(id, request, env, origin) {
+  if (bodyTooBig(request, MAX_BYTES)) return json({ error: 'Too large' }, 413, origin);
   let body;
   try {
     body = await request.json();
@@ -488,7 +516,7 @@ async function write(id, request, env, origin) {
   if (typeof ciphertext !== 'string' || typeof iv !== 'string') {
     return json({ error: 'ciphertext and iv are required' }, 400, origin);
   }
-  if (ciphertext.length > MAX_BYTES) {
+  if (ciphertext.length > MAX_BYTES || fieldsTooBig(iv, updatedAt, base)) {
     return json({ error: 'Too large' }, 413, origin);
   }
 

@@ -206,3 +206,49 @@ test('an upload that was waiting while the other device\'s copy came in is dropp
   assert.deepEqual(b.data, { people: ['from A'] });
   assert.deepEqual(await onServer(a), { people: ['from A'] }, 'B\'s old copy was not sent over it');
 });
+
+test('a device with no workplace yet leaves nothing on the server, until it has one', async () => {
+  rows.clear();
+  const a = await device('a');
+  a.data = { orgs: [] };
+  assert.equal((await a.reconcile()).action, 'nothing-yet');
+  await a.save({ orgs: [] });
+  assert.equal(rows.size, 0, 'merely opening the app makes no server copy');
+
+  await a.save({ orgs: [{ id: 1, name: 'Cafe' }] });
+  assert.deepEqual(await onServer(a), { orgs: [{ id: 1, name: 'Cafe' }] });
+  // Delete all data still empties the copy the server already holds.
+  await a.save({ orgs: [] });
+  assert.deepEqual(await onServer(a), { orgs: [] });
+});
+
+test('backing up that the server keeps refusing is said once; a dropped connection stays quiet', async () => {
+  rows.clear();
+  const a = await device('a');
+  const told = [];
+  await a.use((s) => s.onTrouble((reason) => told.push(reason)));
+  await a.save({ orgs: [{ id: 1 }] });
+  const okAt = await a.use((s) => s.backupState().okAt);
+  assert.ok(okAt, 'a sync that worked is remembered');
+
+  const real = globalThis.fetch;
+  try {
+    // Offline: every try fails, and nobody is interrupted about it.
+    globalThis.fetch = async () => { throw new TypeError('offline'); };
+    for (let i = 0; i < 4; i++) await a.save({ orgs: [{ id: 1 }], n: i });
+    assert.deepEqual(told, []);
+
+    // The server answering no is different: after three in a row the person is told, once.
+    globalThis.fetch = async () => new Response('{}', { status: 413 });
+    for (let i = 0; i < 5; i++) await a.save({ orgs: [{ id: 1 }], n: i });
+    assert.equal(told.length, 1);
+    assert.match(told[0], /too big to back up/);
+    assert.deepEqual(await a.use((s) => s.backupState()), { okAt, problem: told[0] }, 'Settings can say why, and since when');
+  } finally {
+    globalThis.fetch = real;
+  }
+
+  // Working again clears the problem, and a later run of refusals would be said again.
+  await a.save({ orgs: [{ id: 1 }], n: 'again' });
+  assert.equal(await a.use((s) => s.backupState().problem), '');
+});

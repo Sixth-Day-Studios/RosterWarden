@@ -216,7 +216,9 @@ export async function collect(ids = null) {
   for (const p of people) {
     const box = boxes.get(keys.get(p.id).inId);
     if (!box || box.replaced) continue;
-    if (p.staffLink.lastFromStaff && box.updatedAt <= p.staffLink.lastFromStaff) continue;
+    // Already taken in? Judged by whether it is the same send, never by which stamp is later: the stamp is
+    // the staff phone's own clock, and one send from a phone running fast would hide every send after it.
+    if (box.updatedAt === p.staffLink.lastFromStaff) continue;
     try {
       takeSwaps(p, box.value);
       takeReplies(p, box.value);

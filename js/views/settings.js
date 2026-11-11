@@ -94,7 +94,7 @@ export function render(container) {
     // Delete all data and the account line close the menu, below everything else.
     fill(container, [
       el('h2', { textContent: 'Settings' }), ...renderMenu(container),
-      el('div', { className: 'settings-foot' }, [deleteAllButton(), accountFooter(() => render(container))]),
+      el('div', { className: 'settings-foot' }, [backupLine(), deleteAllButton(), accountFooter(() => render(container))]),
     ]);
     return;
   }
@@ -424,6 +424,22 @@ function renderInstallCard(container) {
         + 'browser may not support it — Safari on iPhone and Chrome on Android both do.',
     }),
   ]);
+}
+
+/**
+ * What the Settings menu says about backing up, from `sync.backupState()`:
+ * '' with nothing to say yet, else `{ text, failing }`.
+ */
+function backupText({ okAt, problem }) {
+  const when = okAt ? new Date(okAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+  if (problem) return { text: `Not backing up: ${problem}${when ? ` Last backed up ${when}.` : ''}`, failing: true };
+  return when ? { text: `Backed up ${when}`, failing: false } : '';
+}
+
+/** The line above Delete all data saying when the rosters were last backed up, or why they aren't. Null with sync off. */
+function backupLine() {
+  const line = sync.isEnabled() && backupText(sync.backupState());
+  return line ? el('div', { className: line.failing ? 'err' : 'faint', textContent: line.text }) : null;
 }
 
 /** The red Delete all data button, at the foot of the Settings menu. */
