@@ -1,0 +1,28 @@
+# Runs the whole test suite on every pull request and on main, so a change that breaks a test is seen
+# before it is merged, not at deploy time. The tests need nothing installed: no npm packages, no network.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: App and worker tests
+        run: node --test "tests/*.mjs"
+      - name: Deploy script tests
+        run: python tests/test_wr.py

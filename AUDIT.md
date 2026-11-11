@@ -268,8 +268,8 @@ Severity · confidence · status. File references are to `audit-fixes` unless no
 ## Refactor priorities / quick wins / test priorities
 
 1. **Immediately:** deploy the worker (`cd worker; npx wrangler deploy --config wrangler.toml`) and the app (`python wr.py deploy`) once `audit-fixes` is merged. Either order is safe. Then try the two-device conflict on real phones.
-2. **Quick wins still open:** bind the dev server to 127.0.0.1; single-flight Planning Center refresh; `matchCode` retry on launch; scope the Cloudflare token. (Pinned wrangler, the deploy gate, the worker rate limit and the full CSP were done in #42.)
-3. **Medium term:** atomic versioned service-worker caches per deploy; per-record sync merge; worker table cleanup; accessibility pass on sheets and calendars.
+2. **Quick wins still open:** ~~bind the dev server to 127.0.0.1; single-flight Planning Center refresh;~~ (done, see the 11 November follow-up below) `matchCode` retry on launch; scope the Cloudflare token. (Pinned wrangler, the deploy gate, the worker rate limit and the full CSP were done in #42.)
+3. **Medium term:** atomic versioned service-worker caches per deploy; per-record sync merge; ~~worker table cleanup;~~ (done, below) accessibility pass on sheets and calendars.
 4. **Tests:** staff page, sw install/offline, an end-to-end browser run of build → edit → rebuild → Next roster.
 
 ## Decisions made (5 November 2026)
@@ -277,3 +277,61 @@ Severity · confidence · status. File references are to `audit-fixes` unless no
 1. **Delete all data** stays global, and now says so.
 2. **Privacy wording** reworded everywhere (see #10), rather than changing the design.
 3. The help guide, product page, Guardian's guide and privacy policy on sixthdaystudios.com were updated to match, and deployed with this release.
+
+---
+
+## Follow-up audit (11 November 2026)
+
+A second pass at `282fcaa`, looking for what the first audit missed and for safer or cheaper approaches. Fixed in
+#44 (released 11 November) and its follow-up, #45 (released 12 November). "Fixed" means with a regression test that fails on the old
+code, unless the line says otherwise.
+
+### New findings
+
+| # | Finding | Sev. | Status |
+|---|---|---|---|
+| 1 | Sync could fail for good without a word: `sync.status` was read by nothing | Medium | **Fixed** in #44 (Settings line; one toast after three server refusals) |
+| 2 | A staff send was skipped when its stamp, the staff phone's clock, was not later than the last | Low-Med | **Fixed** in #44 (same-send check) |
+| 3 | The worker capped `ciphertext` but not `iv` or the stamps, and its blob cap was above D1's 2,000,000-byte value limit | Low | **Fixed** in #44 |
+| 4 | Every first visit left an empty row on the server | Low | **Fixed** in #44 |
+| 5 | An uncaught worker error answered without CORS headers, so the app said "offline" | Low | **Fixed** in #44 |
+| 6 | The pinned wrangler had 1 high and 2 moderate advisories (tooling only) | Low | **Fixed** in #44 (4.160.0) |
+| 7 | `/boxes` and `/claims` made one D1 query per id; the free plan allows 50 per request, so more than 50 staff links could not be checked at once | Medium | **Fixed** in the follow-up (one `DB.batch`) |
+| 8 | A person's two mailboxes share one key with nothing tying a copy to its box, so the server could swap them, or move a claim to another shift | Low | **Fixed** in the follow-up (id as AES-GCM additional data) |
+
+Finding 7 was first listed here as a performance note only. Cloudflare's limits page shows it was a hard limit
+waiting to be hit; before #44 it would have surfaced as "Could not reach the server".
+
+### Also done in the follow-up, from this file's open lists
+
+- Planning Center refresh is single-flight.
+- The dev server binds 127.0.0.1 unless given `--lan`.
+- CI: `.github/workflows/tests.yml` runs both suites on every pull request and on `main`.
+- The worker deploy is gated: `python wr.py worker-deploy`.
+- Worker table cleanup: a daily cron removes claims older than 180 days and email counts older than a week. Blobs,
+  mailboxes and replaced-link markers are left: the server can't tell an abandoned one from one whose owner is away,
+  and a marker must stay for an old link to keep saying it was replaced.
+- Scheduler speed: `toDays` remembers each date. 100 people × 90 days × 24 places went from 889 ms to 144 ms; 300 × 365 ×
+  40 from 19.5 s to 3.4 s (desktop Node). A build that size still blocks the screen while it runs.
+- `collect` saves once per pass (`store.batch`).
+- The "Not backing up" line and toast were checked in a browser against the local dev server, with the sync server
+  stubbed to refuse uploads.
+
+### What sealing for an id does and doesn't do (finding 8)
+
+It stops a copy being opened anywhere but under the id it was sealed for. It does not stop the server handing back an
+older copy of the same box (a rollback); that would need a counter the two sides agree on. Copies written before the
+change open the old way until a sealed one has been seen in that place, per device for the synced blob, per person
+for a mailbox, per phone for a staff page. A phone still running the previous version of the app for one more launch
+can't open a newly sealed copy; the service worker moves it to the new version on that launch.
+
+### Still open
+
+- **Scope the Cloudflare token.** This has to be done in the Cloudflare dashboard, not in code. The token in
+  Guardian's `.env` deploys this app, the sync worker and the website, so a replacement needs roughly: Workers
+  Scripts (edit), D1 (edit), Workers R2 Storage (edit, for the site's releases bucket), Workers Routes (edit) on the
+  sixthdaystudios.com zone for the custom domains, and Account Settings (read). Check each deploy script with
+  `--dry-run` and one real deploy after swapping it.
+- `matchCode` never retries after a failed sign-in match.
+- Atomic, versioned service-worker caches; per-record sync merge; the accessibility items; the remaining Low items
+  in the lists above.

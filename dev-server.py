@@ -6,7 +6,10 @@ like a bug in the app. This serves the same files with caching switched off.
 
 Development only. The real site is static files on GitHub Pages.
 
-    python dev-server.py [port]
+    python dev-server.py [port] [--lan]
+
+Only this computer can reach it, unless `--lan` is given: that opens it to the local network, for trying
+the app on a phone, and with it everything in this folder (including .git) to anyone on that network.
 """
 from __future__ import annotations
 
@@ -15,7 +18,10 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8123
+ARGS = [a for a in sys.argv[1:] if a != "--lan"]
+PORT = int(ARGS[0]) if ARGS else 8123
+# "" listens on every network interface; 127.0.0.1 on this computer alone.
+HOST = "" if "--lan" in sys.argv[1:] else "127.0.0.1"
 
 
 class NoCacheHandler(SimpleHTTPRequestHandler):
@@ -38,12 +44,12 @@ def main() -> int:
     """Serve the project root until interrupted."""
     root = Path(__file__).resolve().parent
     handler = partial(NoCacheHandler, directory=str(root))
-    print(f"RosterWarden dev server: http://localhost:{PORT}  (no-cache)")
+    print(f"RosterWarden dev server: http://localhost:{PORT}  (no-cache{', open to the local network' if HOST == '' else ''})")
     # Threading, not the plain HTTPServer: browsers hold keep-alive
     # connections open, and a single-threaded server blocks on the first
     # one, leaving every later request hanging.
     try:
-        ThreadingHTTPServer(("", PORT), handler).serve_forever()
+        ThreadingHTTPServer((HOST, PORT), handler).serve_forever()
     except KeyboardInterrupt:
         print("\nstopped")
     return 0

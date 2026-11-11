@@ -17,6 +17,8 @@ globalThis.localStorage = {
 };
 const rows = new Map();
 const DB = {
+  // What D1's batch() gives: each statement's rows, in order.
+  batch: async (statements) => Promise.all(statements.map(async (s) => ({ results: [await s.first()].filter(Boolean) }))),
   prepare(sql) {
     return {
       bind(...a) {

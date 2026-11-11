@@ -187,18 +187,28 @@ async function accessToken(force = false) {
   const tokens = readTokens();
   if (!tokens?.refresh_token) throw new PCOError('Not connected to Planning Center.');
   if (!force && tokens.access_token && Date.now() < tokens.expires_at) return tokens.access_token;
-  try {
-    const fresh = stamp(await worker('/pco/refresh', { refresh_token: tokens.refresh_token }));
-    writeTokens(fresh);
-    return fresh.access_token;
-  } catch (err) {
-    // Only a refusal ends the session. A dropped connection or a worker
-    // hiccup keeps the tokens, so the next tap simply tries again.
-    if (!err.refused) throw err;
-    writeTokens(null);
-    throw new PCOError('Planning Center signed you out. Connect again to carry on.');
+  // One refresh at a time, shared by every request that needs a token meanwhile. A refresh token works
+  // once: two refreshes side by side would have the second refused, and a refusal signs the device out.
+  if (!refreshing) {
+    refreshing = worker('/pco/refresh', { refresh_token: tokens.refresh_token })
+      .then((fresh) => {
+        const stamped = stamp(fresh);
+        writeTokens(stamped);
+        return stamped.access_token;
+      }, (err) => {
+        // Only a refusal ends the session. A dropped connection or a worker
+        // hiccup keeps the tokens, so the next tap simply tries again.
+        if (!err.refused) throw err;
+        writeTokens(null);
+        throw new PCOError('Planning Center signed you out. Connect again to carry on.');
+      })
+      .finally(() => { refreshing = null; });
   }
+  return refreshing;
 }
+
+/** The token refresh under way, if any (see `accessToken`). */
+let refreshing = null;
 
 /** Wait `ms` milliseconds. */
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });

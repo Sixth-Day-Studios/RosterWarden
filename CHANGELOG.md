@@ -6,6 +6,37 @@ pull requests, which are linked so the full detail is one click away.
 
 ## Unreleased
 
+## 12 November 2026
+
+From [#45].
+
+- Building a big roster is about six times faster (100 people over 90 days
+  went from about 0.9 seconds to 0.15), so the screen no longer hangs while
+  it works.
+- Checking staff links now works for workplaces with more than 50 people
+  with a link. The sync server read each person's mailbox as its own
+  database query, and the free plan allows a request only 50; they are now
+  read together as one. Needs a worker deploy.
+- Planning Center no longer signs a device out when two requests renew the
+  sign-in at the same moment. They now share one renewal.
+- Each encrypted copy (your synced rosters, each staff mailbox, each claim on
+  an open shift) is now sealed for the exact place it is stored, so whoever
+  runs the server can't hand one back in place of another, such as a claim
+  moved onto a shift the person never took. Nothing looks different. Copies
+  made before this still open until a sealed one has replaced them.
+- Taking in what staff sent saves once for the whole lot instead of once per
+  change, which is quicker on a phone with a big team.
+- The sync server tidies up after itself once a day: claims on open shifts
+  older than six months and old daily email counts are removed. Your synced
+  rosters and staff mailboxes are never removed. Needs a worker deploy.
+- The tests now run by themselves on GitHub for every pull request.
+- `python wr.py worker-deploy` publishes the sync worker behind the same
+  checks as the app (clean `main`, tests passing), always with the worker's
+  own config. The checks also accept a checkout sitting at `main`'s latest
+  commit, for a second working folder that can't switch to `main`.
+- The local development server can only be reached from this computer,
+  unless started with `--lan` to try the app on a phone.
+
 ## 11 November 2026
 
 From [#44].
@@ -304,3 +335,4 @@ First release of the web app, rebuilt from the Rosterm8 desktop app (see
 [#42]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/42
 [#43]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/43
 [#44]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/44
+[#45]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/45

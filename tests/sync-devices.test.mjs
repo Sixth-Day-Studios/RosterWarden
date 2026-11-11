@@ -252,3 +252,25 @@ test('backing up that the server keeps refusing is said once; a dropped connecti
   await a.save({ orgs: [{ id: 1 }], n: 'again' });
   assert.equal(await a.use((s) => s.backupState().problem), '');
 });
+
+test('the synced copy is sealed for its own place on the server, and an older app\'s copy still opens once', async () => {
+  rows.clear();
+  // A copy written by the app from before sealing: the key alone, for no place in particular.
+  const a = await device('a');
+  const { storageId, cryptoKey } = await a.use((s) => s.deriveKeys(CODE));
+  const unsealed = async (data, at) => rows.set(storageId, { ...(await a.use((s) => s.encrypt(data, cryptoKey))), updated_at: at });
+  await unsealed({ orgs: [{ id: 1, name: 'Old app' }] }, 't-old');
+  a.data = { orgs: [] };
+  assert.equal((await a.reconcile()).action, 'downloaded', 'the old copy is read');
+
+  // This device's own upload is sealed for that place...
+  await a.save({ orgs: [{ id: 1, name: 'New app' }] });
+  const stored = rows.get(storageId);
+  await assert.rejects(a.use((s) => s.decrypt(stored, cryptoKey)), 'it no longer opens with the key alone');
+  assert.deepEqual(await a.use((s) => s.decrypt(stored, cryptoKey, storageId)), { orgs: [{ id: 1, name: 'New app' }] });
+
+  // ...so from now on a copy that isn't is refused, rather than taken for an old one.
+  await unsealed({ orgs: [{ id: 1, name: 'Swapped in' }] }, 't-swap');
+  await assert.rejects(a.use((s) => s.pull()), /did not unlock/);
+  assert.deepEqual(a.data, { orgs: [{ id: 1, name: 'New app' }] });
+});

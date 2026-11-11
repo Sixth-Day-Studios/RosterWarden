@@ -133,7 +133,7 @@ export async function createLink(personId) {
   store.updatePerson(personId, {
     staffLink: {
       key: uniqueLinkKey(), sentAt: null, sentVia: null, lastFromStaff: null, note: '', outHash: null,
-      profileSeen: null, profileSuggestion: null,
+      profileSeen: null, profileSuggestion: null, bound: false,
     },
   });
   try { await publish([personId]); } catch { /* published on the next sync instead */ }
@@ -165,7 +165,7 @@ export async function replaceLink(personId) {
   const { inId, outId } = await link.boxesFor(person.staffLink.key);
   await link.replaceBox(inId);
   await link.replaceBox(outId);
-  patchLink(personId, { key: uniqueLinkKey(), sentAt: null, sentVia: null, outHash: null });
+  patchLink(personId, { key: uniqueLinkKey(), sentAt: null, sentVia: null, outHash: null, bound: false });
   try { await publish([personId]); } catch { /* published on the next sync instead */ }
 }
 
@@ -205,7 +205,10 @@ export async function collect(ids = null) {
   if (people.length === 0) return [];
   const keys = new Map();
   for (const p of people) keys.set(p.id, await link.boxesFor(p.staffLink.key));
-  const boxes = await link.readBoxes(people.map((p) => ({ id: keys.get(p.id).inId, cryptoKey: keys.get(p.id).cryptoKey })));
+  // Once a person's page has sent something sealed for their own mailbox (`bound`), nothing else is taken from it.
+  const boxes = await link.readBoxes(people.map((p) => ({
+    id: keys.get(p.id).inId, cryptoKey: keys.get(p.id).cryptoKey, strict: p.staffLink.bound === true,
+  })));
 
   // Swaps on days long gone are history nobody needs.
   const cutoff = fromDays(toDays(todayISO()) - 30);
@@ -213,7 +216,8 @@ export async function collect(ids = null) {
 
   pruneActivity();
   const changed = [];
-  for (const p of people) {
+  // Everything read is applied in one go and saved once (see store.batch): nothing below waits on anything.
+  store.batch(() => { for (const p of people) {
     const box = boxes.get(keys.get(p.id).inId);
     if (!box || box.replaced) continue;
     // Already taken in? Judged by whether it is the same send, never by which stamp is later: the stamp is
@@ -229,7 +233,7 @@ export async function collect(ids = null) {
       store.replaceSourcedBlackouts(p.id, SOURCE, dates.map((d) => ({ start: d, end: d, reason: 'from their link' })));
       const note = textOf(box.value?.note).slice(0, NOTE_MAX);
       logDateChanges(p, before, dates, p.staffLink.note, note);
-      patchLink(p.id, { lastFromStaff: box.updatedAt, note });
+      patchLink(p.id, { lastFromStaff: box.updatedAt, note, ...(box.bound ? { bound: true } : {}) });
       changed.push(store.data.people.find((x) => x.id === p.id));
     } catch (err) {
       // One page sending something that can't be taken in must not stop everyone after them being read.
@@ -237,7 +241,7 @@ export async function collect(ids = null) {
       console.warn('Could not take in what %s sent through their link.', p.name, err);
       patchLink(p.id, { lastFromStaff: box.updatedAt });
     }
-  }
+  } });
   return changed;
 }
 
@@ -760,6 +764,8 @@ export async function sendOpenShifts(days, dayShifts) {
     orgId, key: link.newLinkKey(), days: [...days].sort(),
     dayShifts: Object.fromEntries(days.map((d) => [d, dayShifts[d] || []])),
     sentAt: new Date().toISOString(), closedAt: null, claims: {},
+    // Claims on this set are sealed for the slot they are on (see takeClaim in js/staff-link.js).
+    bound: true,
   };
   // Only the set out now is kept; a stopped or replaced one is finished with.
   store.data.openShifts = [...store.data.openShifts.filter((o) => o.orgId !== orgId), open];
@@ -798,7 +804,7 @@ function openPage(person) {
   const roles = store.data.roles.filter((r) => r.orgId === person.orgId);
   const roleById = new Map(roles.map((r) => [r.id, r]));
   return {
-    id: open.id, key: open.key, me: pickName(person),
+    id: open.id, key: open.key, bound: open.bound === true, me: pickName(person),
     slots: slotsForPerson(open, person, roleById).map((s) => ({
       ref: s.ref, date: s.date, shift: s.shift.name || 'Shift', times: shiftTimes(s.shift),
       role: s.roleId != null ? roleById.get(s.roleId)?.name || null : null, note: s.shift.note || '',
@@ -822,7 +828,7 @@ export async function refreshClaims() {
   for (const open of store.data.openShifts) {
     const slots = slotsFor(open);
     const ids = await Promise.all(slots.map((s) => link.claimId(open.key, s.ref)));
-    const found = await link.readClaims(ids, await link.openCryptoKey(open.key));
+    const found = await link.readClaims(ids, await link.openCryptoKey(open.key), open.bound === true);
     // Whose link each claim's `by` comes from, among the people this set went to.
     const byOf = new Map();
     for (const p of openAudience(open.orgId)) byOf.set((await link.claimer(p.staffLink.key)).by, p);

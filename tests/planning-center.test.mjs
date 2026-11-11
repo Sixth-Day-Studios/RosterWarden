@@ -331,3 +331,19 @@ test('replies are read back as confirmed, waiting or declined, and nothing is ch
   });
   assert.ok(calls.every((c) => c.method === 'GET'));
 });
+
+test('requests that find the token expired at the same moment share one refresh', async () => {
+  signIn(-10);
+  let refreshes = 0;
+  routes = (method, url) => {
+    if (url.endsWith('/pco/refresh')) {
+      refreshes += 1;
+      // A refresh token works once: a second refresh with the old one would be refused, and sign the device out.
+      return refreshes === 1 ? { access_token: 'new', refresh_token: 'ref2', expires_in: 7200 } : reply({ error: 'invalid_grant' }, 400);
+    }
+    return { data: [], included: [], links: {} };
+  };
+  await Promise.all([pco.listTeams(), pco.listTeams()]);
+  assert.equal(refreshes, 1);
+  assert.equal(pco.isConnected(), true);
+});

@@ -27,6 +27,11 @@ name = "RATE_LIMIT"
 namespace_id = "2611"
 simple = { limit = 600, period = 60 }
 
+# The daily tidy-up (`scheduled` in src/index.js): old open-shift claims and past days' email counts go.
+# 16:23 UTC is the small hours in Australia.
+[triggers]
+crons = ["23 16 * * *"]
+
 # Planning Center sign-in. The client id is public (it also sits in js/config.js);
 # the secret is NOT kept here - set it once with:
 #   npx --no-install wrangler secret put PCO_CLIENT_SECRET --config wrangler.toml

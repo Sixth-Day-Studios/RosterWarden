@@ -162,6 +162,11 @@ export const store = {
    * silently.
    */
   save() {
+    // Inside `batch`: noted, and written once when the batch ends.
+    if (this._batching) {
+      this._unsaved = true;
+      return true;
+    }
     try {
       localStorage.setItem(KEY, JSON.stringify(this.data));
     } catch (err) {
@@ -179,6 +184,26 @@ export const store = {
       console.warn('A save listener threw; the save itself was fine.', err);
     }
     return true;
+  },
+
+  /**
+   * Run `fn`, which makes many changes in one go, saving once when it ends instead of after each change.
+   * Every save writes the whole database, so taking in what thirty staff sent was thirty or more full
+   * writes. `fn` must not wait on anything (no await): a save held back across a network call could be
+   * lost if the app closed meanwhile. Returns what `fn` returns.
+   */
+  batch(fn) {
+    if (this._batching) return fn();   // already inside one: its end saves
+    this._batching = true;
+    try {
+      return fn();
+    } finally {
+      this._batching = false;
+      if (this._unsaved) {
+        this._unsaved = false;
+        this.save();
+      }
+    }
   },
 
   /** Register a single listener called after every successful save. */

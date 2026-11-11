@@ -327,6 +327,12 @@ in, the code exists only on that device, so nobody else can read the data and
 the Rosters screen asks them to sign in. Deleting the account removes the kept
 code; signing out does not.
 
+Every encrypted copy is sealed for the id it is stored under (`unseal` in
+`js/sync.js`): the synced rosters, each staff mailbox and each open-shift claim.
+The server holds only locked copies, and this stops it handing one back in
+place of another. Copies written before this still open until a sealed one has
+been seen in that place.
+
 Nothing is uploaded until the device has a workplace, so merely opening the app
 leaves nothing on the server. **Settings** says when the rosters were last
 backed up; a dropped connection stays quiet, but when the server refuses three
@@ -389,7 +395,9 @@ python dev-server.py
 
 Then open `http://localhost:8123`. `dev-server.py` sends no-cache headers so an
 edit always shows, and the service worker is skipped on localhost for the same
-reason. Tests:
+reason. Only this computer can reach it; `python dev-server.py 8123 --lan` opens
+it to the local network for trying the app on a phone (and with it everything
+in this folder, so only on a network you trust). Tests:
 
 ```bash
 node --test tests/*.mjs
@@ -400,6 +408,9 @@ and, for `wr.py`'s deploy checks (run against stand-ins, so nothing is deployed)
 ```bash
 python tests/test_wr.py
 ```
+
+Both run on GitHub for every pull request and on `main`
+(`.github/workflows/tests.yml`).
 
 ## Layout
 
@@ -440,12 +451,15 @@ npm ci
 ```
 
 Then deploy from `main` with `python wr.py deploy`. It refuses unless this
-checkout is on `main`, has no uncommitted changes, and `node --test tests/*.mjs`
-passes, and says which. `python wr.py deploy --force` deploys anyway. It copies
+checkout is on `main` (or at the very commit `origin/main` is at, for a second
+worktree that can't check `main` out), has no uncommitted changes, and
+`node --test tests/*.mjs` passes, and says which. `python wr.py deploy --force`
+deploys anyway. It copies
 just the app (`index.html`, the manifest, `sw.js`, `_headers`, `css/`, `js/`,
 `icons/`) into `dist/` and publishes that, using the Cloudflare token in
 Guardian's `.env`. Merging to `main` does not deploy by itself. The sync worker
-is deployed separately (see `worker/README.md`).
+is deployed separately, with `python wr.py worker-deploy`: the same checks, then
+wrangler run in `worker/` with that folder's own config (see `worker/README.md`).
 
 `_headers` sets the security headers on every file, including a Content
 Security Policy that lets the page talk only to the services it uses. A new

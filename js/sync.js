@@ -47,6 +47,12 @@ const AGREED_CHANGE_KEY = 'rosterwarden.sync.agreedChange';
 /** When this device last matched the server, by this device's clock: the "Backed up" time in Settings. */
 const OK_AT_KEY = 'rosterwarden.sync.okAt';
 
+/**
+ * The storage id under which this device has seen (or written) a copy sealed for that id. From then on
+ * only such a copy is accepted there (see `unseal`).
+ */
+const BOUND_KEY = 'rosterwarden.sync.bound';
+
 /** How many uploads or checks in a row the server must refuse before the person is told (see `onTrouble`). */
 const TROUBLE_AFTER = 3;
 
@@ -118,13 +124,20 @@ export async function deriveKeys(code) {
   return { storageId, cryptoKey };
 }
 
-/** Encrypt a JS value, returning base64 ciphertext and nonce. */
-export async function encrypt(value, cryptoKey) {
+/**
+ * The AES-GCM settings for one nonce. With `boundTo` (the id the sealed copy is stored under), that id is
+ * mixed into the check AES-GCM makes when opening it, so a copy only opens under the id it was sealed
+ * for: whoever runs the server can't hand one box's contents back under another box's id.
+ */
+function gcm(iv, boundTo) {
+  return { name: 'AES-GCM', iv, ...(boundTo ? { additionalData: encoder.encode(boundTo) } : {}) };
+}
+
+/** Encrypt a JS value, returning base64 ciphertext and nonce. `boundTo` ties it to an id (see `gcm`). */
+export async function encrypt(value, cryptoKey, boundTo = null) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const plaintext = encoder.encode(JSON.stringify(value));
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv }, cryptoKey, plaintext
-  );
+  const ciphertext = await crypto.subtle.encrypt(gcm(iv, boundTo), cryptoKey, plaintext);
   return { ciphertext: toBase64(ciphertext), iv: toBase64(iv) };
 }
 
@@ -132,12 +145,26 @@ export async function encrypt(value, cryptoKey) {
  * Decrypt back to the original value.
  * Throws if the code is wrong or the data was tampered with - AES-GCM
  * authenticates, so a bad key fails loudly rather than returning noise.
+ * `boundTo` must be the id it was sealed for, if it was sealed for one.
  */
-export async function decrypt({ ciphertext, iv }, cryptoKey) {
-  const plaintext = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: fromBase64(iv) }, cryptoKey, fromBase64(ciphertext)
-  );
+export async function decrypt({ ciphertext, iv }, cryptoKey, boundTo = null) {
+  const plaintext = await crypto.subtle.decrypt(gcm(fromBase64(iv), boundTo), cryptoKey, fromBase64(ciphertext));
   return JSON.parse(decoder.decode(plaintext));
+}
+
+/**
+ * Open the copy stored under `id`, as `{ value, bound }`. Everything is now sealed for its id (`bound`
+ * true); a copy written by the app from before that opens the old way (`bound` false), unless `strict`.
+ * Callers pass `strict` once they have seen a bound copy under that id: from then on an unbound one is
+ * not an old copy but a swapped or replayed one, and is refused.
+ */
+export async function unseal(sealed, cryptoKey, id, strict = false) {
+  try {
+    return { value: await decrypt(sealed, cryptoKey, id), bound: true };
+  } catch (err) {
+    if (strict) throw err;
+    return { value: await decrypt(sealed, cryptoKey), bound: false };
+  }
 }
 
 // ─── device state ────────────────────────────────────────────────────────
@@ -541,7 +568,7 @@ export async function push(data, code = currentCode(), base = undefined) {
   if (!code) throw new SyncError('Sync is not switched on for this device.');
 
   const { storageId, cryptoKey } = await deriveKeys(code);
-  const payload = await encrypt(data, cryptoKey);
+  const payload = await encrypt(data, cryptoKey, storageId);
   const updatedAt = new Date().toISOString();
 
   let res;
@@ -557,6 +584,7 @@ export async function push(data, code = currentCode(), base = undefined) {
   if (res.status === 409) throw new SyncConflict((await res.json().catch(() => ({}))).updatedAt ?? null);
   if (res.status === 413) throw new SyncError('Your rosters have grown too big to back up. Deleting old rosters makes room.', true);
   if (!res.ok) throw new SyncError(`Sync server returned ${res.status}.`, true);
+  setStamp(BOUND_KEY, storageId);
   return updatedAt;
 }
 
@@ -581,7 +609,9 @@ export async function pull(code = currentCode()) {
 
   const body = await res.json();
   try {
-    return { data: await decrypt(body, cryptoKey), updatedAt: body.updatedAt };
+    const { value, bound } = await unseal(body, cryptoKey, storageId, stamp(BOUND_KEY) === storageId);
+    if (bound) setStamp(BOUND_KEY, storageId);
+    return { data: value, updatedAt: body.updatedAt };
   } catch {
     // A wrong code lands here: the id happened to exist but the key does not
     // decrypt it. Far more likely is a typo than corruption, so say that.

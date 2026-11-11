@@ -15,9 +15,13 @@
  * neither, and the key cannot be worked back from the ids it does see.
  * Replacing a link marks its boxes replaced on the worker, so an old or leaked
  * link can never write again.
+ *
+ * Both boxes share the one key, so each is sealed for its own id (see `unseal`
+ * in js/sync.js): what the owner published can't be handed back as what the
+ * staff member sent, or the other way round.
  */
 import { SYNC_URL } from './config.js';
-import { encrypt, decrypt } from './sync.js';
+import { encrypt, decrypt, unseal } from './sync.js';
 
 const encoder = new TextEncoder();
 
@@ -99,27 +103,30 @@ async function request(path, options = {}) {
 export async function writeBox(id, cryptoKey, value) {
   const updatedAt = new Date().toISOString();
   const res = await request(`/box/${id}`, {
-    method: 'PUT', body: JSON.stringify({ ...(await encrypt(value, cryptoKey)), updatedAt }),
+    method: 'PUT', body: JSON.stringify({ ...(await encrypt(value, cryptoKey, id)), updatedAt }),
   });
   if (res.status === 410) throw new LinkReplaced('This link has been replaced.');
   if (!res.ok) throw new LinkError('Saving failed. Try again in a moment.');
   return updatedAt;
 }
 
-/** A mailbox's contents as `{ value, updatedAt }`, null if empty; LinkReplaced if replaced. */
-export async function readBox(id, cryptoKey) {
+/**
+ * A mailbox's contents as `{ value, updatedAt, bound }`, null if empty; LinkReplaced if replaced.
+ * `strict` refuses a copy not sealed for this box (pass it once a `bound` one has been seen there).
+ */
+export async function readBox(id, cryptoKey, strict = false) {
   const res = await request(`/box/${id}`);
   if (res.status === 404) return null;
   if (res.status === 410) throw new LinkReplaced('This link has been replaced.');
   if (!res.ok) throw new LinkError('Loading failed. Try again in a moment.');
   const body = await res.json();
-  return { value: await decrypt(body, cryptoKey), updatedAt: body.updatedAt };
+  return { ...(await unseal(body, cryptoKey, id, strict)), updatedAt: body.updatedAt };
 }
 
 /**
- * Several mailboxes in one request: `entries` is `[{ id, cryptoKey }]`.
- * Returns a Map of id to `{ value, updatedAt }` or `{ replaced: true }`; empty
- * boxes, and any that will not decrypt, are left out.
+ * Several mailboxes in one request: `entries` is `[{ id, cryptoKey, strict }]`
+ * (`strict` as for `readBox`). Returns a Map of id to `{ value, updatedAt, bound }`
+ * or `{ replaced: true }`; empty boxes, and any that will not decrypt, are left out.
  */
 export async function readBoxes(entries) {
   const out = new Map();
@@ -128,12 +135,12 @@ export async function readBoxes(entries) {
     const res = await request('/boxes', { method: 'POST', body: JSON.stringify({ ids: batch.map((e) => e.id) }) });
     if (!res.ok) throw new LinkError('Checking staff links failed.');
     const found = await res.json();
-    for (const { id, cryptoKey } of batch) {
+    for (const { id, cryptoKey, strict } of batch) {
       const box = found[id];
       if (!box) continue;
       if (box.replaced) { out.set(id, { replaced: true }); continue; }
       try {
-        out.set(id, { value: await decrypt(box, cryptoKey), updatedAt: box.updatedAt });
+        out.set(id, { ...(await unseal(box, cryptoKey, id, strict)), updatedAt: box.updatedAt });
       } catch {
         // Not decryptable with this key: not ours to read, so treated as empty.
       }
@@ -182,11 +189,13 @@ export async function claimer(linkKey) {
 
 /**
  * Take a slot: `value` (who, sealed) goes in under `id` if nobody else holds
- * it. True if it's now theirs, false if someone else got it first.
+ * it. True if it's now theirs, false if someone else got it first. `bound`
+ * (the open set's own `bound`) seals the claim for its slot, so it can't be
+ * moved onto another one; sets sent out before that existed stay as they were.
  */
-export async function takeClaim(id, token, cryptoKey, value) {
+export async function takeClaim(id, token, cryptoKey, value, bound = false) {
   const res = await request(`/claim/${id}`, {
-    method: 'PUT', body: JSON.stringify({ ...(await encrypt(value, cryptoKey)), token }),
+    method: 'PUT', body: JSON.stringify({ ...(await encrypt(value, cryptoKey, bound ? id : null)), token }),
   });
   if (res.status === 409) return false;
   if (!res.ok) throw new LinkError('Could not take that shift. Try again in a moment.');
@@ -201,9 +210,10 @@ export async function releaseClaim(id, token) {
 
 /**
  * The claims held on some slots: a Map of id to `{ value, by }`. Free slots,
- * and any claim that won't open with `cryptoKey`, are left out.
+ * and any claim that won't open with `cryptoKey`, are left out. With `bound`
+ * (see `takeClaim`) a claim must have been sealed for the very slot it is on.
  */
-export async function readClaims(ids, cryptoKey) {
+export async function readClaims(ids, cryptoKey, bound = false) {
   const out = new Map();
   for (let i = 0; i < ids.length; i += 200) {
     const batch = ids.slice(i, i + 200);
@@ -213,7 +223,7 @@ export async function readClaims(ids, cryptoKey) {
     for (const id of batch) {
       if (!found[id]) continue;
       try {
-        out.set(id, { value: await decrypt(found[id], cryptoKey), by: found[id].by });
+        out.set(id, { value: await decrypt(found[id], cryptoKey, bound ? id : null), by: found[id].by });
       } catch {
         // Not sealed with this set's key: not a real claim.
       }

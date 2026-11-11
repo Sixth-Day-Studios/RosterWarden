@@ -157,6 +157,21 @@ export const BLOB_SQL = {
     + 'iv = excluded.iv, updated_at = excluded.updated_at WHERE blobs.updated_at = ?',
 };
 
+/** How long, in days, a claim on an open shift is kept. Shifts are sent out for days or weeks, not half a year. */
+const CLAIM_DAYS = 180;
+
+/** How long, in days, a day's email count is kept. Only today's is ever read. */
+const EMAIL_COUNT_DAYS = 7;
+
+/**
+ * The daily tidy-up SQL (see `scheduled`), named like BOX_SQL for the tests' stand-in database. Each takes
+ * the date or time before which rows go.
+ */
+export const TIDY_SQL = {
+  claims: 'DELETE FROM claims WHERE claimed_at < ?',
+  emailCounts: 'DELETE FROM email_sends WHERE day < ?',
+};
+
 /** A plain email address, with nothing that could add a header. */
 const EMAIL_PATTERN = /^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/;
 
@@ -228,6 +243,20 @@ export default {
       return json({ error: 'Something went wrong on the server. Try again in a moment.' }, 500, origin);
     }
   },
+
+  /**
+   * The daily tidy-up (the cron trigger in wrangler.toml): rows nothing will read again are removed, so the
+   * database doesn't only ever grow. That is old claims on open shifts and past days' email counts.
+   * Synced rosters and staff mailboxes are never touched: the server can't tell a forgotten one from one
+   * whose owner is simply away, and a replaced link's marker must stay for the old link to keep saying so.
+   */
+  async scheduled(controller, env) {
+    const before = (days) => new Date(Date.now() - days * 86400000).toISOString();
+    await env.DB.batch([
+      env.DB.prepare(TIDY_SQL.claims).bind(before(CLAIM_DAYS)),
+      env.DB.prepare(TIDY_SQL.emailCounts).bind(before(EMAIL_COUNT_DAYS).slice(0, 10)),
+    ]);
+  },
 };
 
 /** Route one request to its endpoint. */
@@ -284,6 +313,23 @@ async function route(request, env, origin) {
   return json({ error: 'Method not allowed' }, 405, origin);
 }
 
+/**
+ * The rows `sql` (a read by one id) finds for each of `ids`, as a Map of id to row; ids with no row are
+ * left out. Sent to the database as one batch: it allows a request only so many queries (50 on the free
+ * plan), which a query per id would pass at the 51st staff link, and one round trip is quicker than 200.
+ */
+async function readMany(env, sql, ids) {
+  const out = new Map();
+  if (ids.length === 0) return out;
+  const statement = env.DB.prepare(sql);
+  const results = await env.DB.batch(ids.map((id) => statement.bind(id)));
+  results.forEach((result, i) => {
+    const row = result.results?.[0];
+    if (row) out.set(ids[i], row);
+  });
+  return out;
+}
+
 /** One mailbox: its contents, 404 if never written, 410 once its link was replaced. */
 async function boxRead(id, env, origin) {
   const row = await env.DB.prepare(BOX_SQL.read).bind(id).first();
@@ -333,9 +379,7 @@ async function boxBatch(request, env, origin) {
     return json({ error: 'ids must be up to 200 hex ids' }, 400, origin);
   }
   const out = {};
-  for (const id of ids) {
-    const row = await env.DB.prepare(BOX_SQL.read).bind(id).first();
-    if (!row) continue;
+  for (const [id, row] of await readMany(env, BOX_SQL.read, ids)) {
     out[id] = row.revoked
       ? { replaced: true }
       : { ciphertext: row.ciphertext, iv: row.iv, updatedAt: row.updated_at };
@@ -393,9 +437,8 @@ async function claimBatch(request, env, origin) {
     return json({ error: 'ids must be up to 200 hex ids' }, 400, origin);
   }
   const out = {};
-  for (const id of ids) {
-    const row = await env.DB.prepare(CLAIM_SQL.read).bind(id).first();
-    if (row) out[id] = { ciphertext: row.ciphertext, iv: row.iv, by: row.by_hash };
+  for (const [id, row] of await readMany(env, CLAIM_SQL.read, ids)) {
+    out[id] = { ciphertext: row.ciphertext, iv: row.iv, by: row.by_hash };
   }
   return json(out, 200, origin);
 }

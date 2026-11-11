@@ -20,6 +20,8 @@ const boxes = new Map();
 const claims = new Map();
 /** A stand-in D1 answering exactly the worker's mailbox and claim statements. */
 const DB = {
+  // What D1's batch() gives: each statement's rows, in order.
+  batch: async (statements) => Promise.all(statements.map(async (s) => ({ results: [await s.first()].filter(Boolean) }))),
   prepare(sql) {
     return {
       bind(...a) {
@@ -162,7 +164,7 @@ async function take(person, ref) {
   const open = await pageOf(person);
   const { token } = await link.claimer(person.staffLink.key);
   return link.takeClaim(await link.claimId(open.key, ref), token, await link.openCryptoKey(open.key),
-    { name: open.me, at: new Date().toISOString() });
+    { name: open.me, at: new Date().toISOString() }, open.bound);
 }
 
 test('sent out, taken first come first served, then built with the taken shifts locked in', async () => {
@@ -202,4 +204,19 @@ test('sent out, taken first come first served, then built with the taken shifts 
   staff.stopOpenShifts(open.id);
   await staff.publish();
   assert.equal(await pageOf(sam), null);
+});
+
+test('a claim only counts on the slot it was made for: the server can\'t move it to another', async () => {
+  const [sam] = await setUp();
+  const days = ['2026-11-07', '2026-11-14'];
+  await staff.sendOpenShifts(days, Object.fromEntries(days.map((d) => [d, store.shifts()])));
+  const page = await pageOf(sam);
+  assert.equal(page.bound, true, 'sets sent out now seal each claim for its slot');
+  const [first, other] = [page.slots[0].ref, page.slots[2].ref];
+  assert.equal(await take(sam, first), true);
+
+  // Whoever runs the server copies Sam's claim, holder and all, onto a shift he never took.
+  claims.set(await link.claimId(page.key, other), { ...claims.get(await link.claimId(page.key, first)) });
+  await staff.refreshClaims();
+  assert.deepEqual(Object.keys(staff.openShifts().claims), [first], 'only the shift he really took');
 });
