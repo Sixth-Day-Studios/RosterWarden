@@ -339,3 +339,24 @@ test('a send from a phone whose clock is behind the last send is still taken in'
   // The same send again changes nothing.
   assert.equal((await staff.collect()).length, 0);
 });
+
+test('taking in what several people sent saves once, not once for every change', async () => {
+  const sam = setUp();
+  const ann = store.addPerson('Ann Lee');
+  const bob = store.addPerson('Bob Green');
+  for (const p of [sam, ann, bob]) await staff.createLink(p.id);
+  for (const p of store.people()) await staffSends(p.staffLink.key, ['2026-11-08'], 'see you then');
+
+  let saves = 0;
+  store.onSaved(() => { saves += 1; });
+  try {
+    const changed = await staff.collect();
+    assert.equal(changed.length, 3);
+    assert.equal(saves, 1);
+  } finally {
+    store.onSaved(null);
+  }
+  // And it really was written: a fresh load has everyone's date.
+  store.load();
+  for (const p of store.people()) assert.deepEqual(staff.staffDates(p), ['2026-11-08']);
+});

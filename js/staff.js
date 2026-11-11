@@ -213,7 +213,8 @@ export async function collect(ids = null) {
 
   pruneActivity();
   const changed = [];
-  for (const p of people) {
+  // Everything read is applied in one go and saved once (see store.batch): nothing below waits on anything.
+  store.batch(() => { for (const p of people) {
     const box = boxes.get(keys.get(p.id).inId);
     if (!box || box.replaced) continue;
     // Already taken in? Judged by whether it is the same send, never by which stamp is later: the stamp is
@@ -237,7 +238,7 @@ export async function collect(ids = null) {
       console.warn('Could not take in what %s sent through their link.', p.name, err);
       patchLink(p.id, { lastFromStaff: box.updatedAt });
     }
-  }
+  } });
   return changed;
 }
 
