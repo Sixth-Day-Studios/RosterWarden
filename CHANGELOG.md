@@ -6,6 +6,10 @@ pull requests, which are linked so the full detail is one click away.
 
 ## Unreleased
 
+## 11 November 2026
+
+From [#44].
+
 - Settings now says when your rosters were last backed up, just above
   **Delete all data**. If the sync server keeps refusing a backup (for
   example, the rosters have grown too big), the app tells you once and
@@ -299,3 +303,4 @@ First release of the web app, rebuilt from the Rosterm8 desktop app (see
 [#41]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/41
 [#42]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/42
 [#43]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/43
+[#44]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/44
