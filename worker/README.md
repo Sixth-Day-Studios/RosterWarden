@@ -62,6 +62,18 @@ Always pass `--config wrangler.toml`. Without it, wrangler can pick up the app's
 own config at the repo root, so a deploy would redeploy the app, and a secret
 would land on the app instead of this worker.
 
+Once it is set up, later deploys go through `python wr.py worker-deploy` at the
+repo root: it runs the same checks as the app's deploy (clean `main`, tests
+passing), then wrangler in this folder with `--config wrangler.toml`.
+
+## Daily tidy-up
+
+A cron trigger in `wrangler.toml` runs the worker's `scheduled` handler once a
+day. It removes claims on open shifts older than 180 days and daily email
+counts older than a week. Synced rosters, staff mailboxes and the markers left
+by replaced links are never removed: the server can't tell an abandoned one
+from one whose owner is simply away.
+
 ## Rate limit
 
 None of the endpoints need signing in, so each client (an IP address, or an
