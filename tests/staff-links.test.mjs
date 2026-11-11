@@ -331,7 +331,7 @@ test('a send from a phone whose clock is behind the last send is still taken in'
   const { inId, cryptoKey } = await link.boxesFor(key);
   await fetch(`${SYNC_URL}/box/${inId}`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...(await encrypt({ awayDates: ['2026-11-15'], note: '' }, cryptoKey)), updatedAt: '2020-01-01T00:00:00.000Z' }),
+    body: JSON.stringify({ ...(await encrypt({ awayDates: ['2026-11-15'], note: '' }, cryptoKey, inId)), updatedAt: '2020-01-01T00:00:00.000Z' }),
   });
   const changed = await staff.collect();
   assert.equal(changed.length, 1, 'the send is read, whatever its stamp says');
@@ -359,4 +359,45 @@ test('taking in what several people sent saves once, not once for every change',
   // And it really was written: a fresh load has everyone's date.
   store.load();
   for (const p of store.people()) assert.deepEqual(staff.staffDates(p), ['2026-11-08']);
+});
+
+test('what the owner published can\'t be handed back as what the staff member sent', async () => {
+  const sam = setUp();
+  await staff.createLink(sam.id);
+  const key = store.people()[0].staffLink.key;
+  await staffSends(key, ['2026-11-08']);
+  await staff.collect();
+  assert.equal(store.people()[0].staffLink.bound, true, 'their page seals what it sends for their own mailbox');
+
+  // Both mailboxes share one key. Whoever runs the server puts the owner's page box where Sam's sends go.
+  const { inId, outId } = await link.boxesFor(key);
+  rows.set(inId, { ...rows.get(outId), updated_at: '2030-01-01T00:00:00.000Z' });
+  assert.equal((await staff.collect()).length, 0, 'it was sealed for the other box, so it is not read');
+  assert.deepEqual(staff.staffDates(store.people()[0]), ['2026-11-08']);
+});
+
+test('a send from a page that predates sealing is still read, until that person\'s page has sealed one', async () => {
+  const sam = setUp();
+  await staff.createLink(sam.id);
+  const key = store.people()[0].staffLink.key;
+  const { encrypt } = await import('../js/sync.js');
+  const { SYNC_URL } = await import('../js/config.js');
+  const { inId, cryptoKey } = await link.boxesFor(key);
+  /** What the page did before this change: seal with the key alone, for no box in particular. */
+  const oldPageSends = async (awayDates) => fetch(`${SYNC_URL}/box/${inId}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...(await encrypt({ awayDates, note: '' }, cryptoKey)), updatedAt: new Date().toISOString() }),
+  });
+
+  await oldPageSends(['2026-11-08']);
+  assert.equal((await staff.collect()).length, 1, 'an old page still works');
+  assert.notEqual(store.people()[0].staffLink.bound, true);
+
+  await staffSends(key, ['2026-11-15']);
+  await staff.collect();
+  // From here on an unsealed copy in that box is not an old page: it is refused.
+  await new Promise((r) => setTimeout(r, 5));
+  await oldPageSends(['2026-11-22']);
+  assert.equal((await staff.collect()).length, 0);
+  assert.deepEqual(staff.staffDates(store.people()[0]), ['2026-11-15']);
 });

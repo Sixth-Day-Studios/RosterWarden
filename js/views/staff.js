@@ -21,6 +21,27 @@ import {
 /** Where this phone remembers its link, so reopening the app comes back here. */
 export const STORED_KEY = 'rosterwarden.staff.key';
 
+/** Where this phone remembers which of its link's two mailboxes it has seen sealed for themselves (see `seenBound`). */
+const BOUND_KEY = 'rosterwarden.staff.bound';
+
+/**
+ * Whether this phone has seen each mailbox of the link whose page box is `outId` hold a copy sealed for
+ * that mailbox, as `{ in, out }`. Once it has, only such a copy is accepted there (see `unseal` in
+ * js/sync.js). A different link starts again from neither.
+ */
+function seenBound(outId) {
+  try {
+    const kept = JSON.parse(localStorage.getItem(BOUND_KEY) || 'null');
+    if (kept?.id === outId) return { in: kept.in === true, out: kept.out === true };
+  } catch { /* private mode or damaged: treated as not seen */ }
+  return { in: false, out: false };
+}
+
+/** Remember what `seenBound` tells: `seen` is `{ in, out }` for the link whose page box is `outId`. */
+function rememberBound(outId, seen) {
+  try { localStorage.setItem(BOUND_KEY, JSON.stringify({ id: outId, ...seen })); } catch { /* private mode: fine */ }
+}
+
 /** "Sun 1 Nov" for an ISO date. */
 function shortDate(iso) {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, {
@@ -227,7 +248,7 @@ function openShiftsCard(open, linkKey, today, away, hooks) {
     me = me || await claimer(linkKey);
     cryptoKey = cryptoKey || await openCryptoKey(open.key);
     for (const s of slots) if (!ids.has(s.ref)) ids.set(s.ref, await claimId(open.key, s.ref));
-    const found = await readClaims([...ids.values()], cryptoKey);
+    const found = await readClaims([...ids.values()], cryptoKey, open.bound === true);
     held = new Map();
     for (const s of slots) {
       const c = found.get(ids.get(s.ref));
@@ -251,7 +272,7 @@ function openShiftsCard(open, linkKey, today, away, hooks) {
 
   /** Take a shift, unless someone beat them to it. */
   const take = (s) => act(async () => {
-    const ok = await takeClaim(ids.get(s.ref), me.token, cryptoKey, { name: open.me, at: new Date().toISOString() });
+    const ok = await takeClaim(ids.get(s.ref), me.token, cryptoKey, { name: open.me, at: new Date().toISOString() }, open.bound === true);
     toast(ok ? 'It\'s yours' : 'Sorry, someone took it first');
     if (ok) await hooks.answered();
   });
@@ -340,8 +361,12 @@ export async function render(container, key) {
   const { inId, outId, cryptoKey } = await boxesFor(key);
   let mine = null;
   let page = null;
+  const seen = seenBound(outId);
   try {
-    [mine, page] = await Promise.all([readBox(inId, cryptoKey), readBox(outId, cryptoKey)]);
+    [mine, page] = await Promise.all([readBox(inId, cryptoKey, seen.in), readBox(outId, cryptoKey, seen.out)]);
+    seen.in = seen.in || mine?.bound === true;
+    seen.out = seen.out || page?.bound === true;
+    rememberBound(outId, seen);
   } catch (e) {
     if (e instanceof LinkReplaced) {
       try { localStorage.removeItem(STORED_KEY); } catch { /* fine */ }
@@ -443,6 +468,9 @@ export async function render(container, key) {
   const send = async () => {
     try {
       await writeBox(inId, cryptoKey, sent);
+      // What it just wrote is sealed for this mailbox, so from now on nothing else is accepted from it.
+      seen.in = true;
+      rememberBound(outId, seen);
     } catch (e) {
       throw new Error(e instanceof LinkReplaced ? 'This link has been replaced. Ask for the new one.' : e.message);
     }
