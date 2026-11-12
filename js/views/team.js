@@ -33,9 +33,10 @@ export function render(container) {
     { id: 'shifts', label: 'Shifts' },
     ...(skilledRoles().length ? [{ id: 'skills', label: 'Skills' }] : []),
   ];
-  const switcher = el('div', { className: 'row-tight', role: 'tablist' }, parts.map((p) => el('button', {
-    className: 'btn btn-sm', textContent: p.label, role: 'tab',
-    'aria-pressed': String(tab === p.id),
+  // On a phone this row is pinned just above the bottom tab bar (see .team-tabs).
+  const switcher = el('div', { className: 'team-tabs', role: 'tablist' }, parts.map((p) => el('button', {
+    className: 'team-tab', textContent: p.label, role: 'tab',
+    'aria-selected': String(tab === p.id),
     onclick: () => { tab = p.id; render(container); },
   })));
 

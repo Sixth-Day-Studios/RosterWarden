@@ -78,7 +78,7 @@ function dayListsFor(dates) {
 let requestsOpen = false;
 
 /** "Roster 4 Oct 2026" for a roster starting on `first`. */
-function autoName(first) {
+export function autoName(first) {
   return `Roster ${formatDate(first, { withWeekday: false })}`;
 }
 
