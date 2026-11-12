@@ -7,7 +7,8 @@
  * side-by-side layout on a phone.
  */
 import { store } from '../store.js';
-import { formatDate, auditRoster, buildRoster, rosterDates, rollOn, usualDayShifts } from '../scheduler.js';
+import { formatDate, auditRoster, buildRoster, rosterDates, rollOn, usualDayShifts, shiftOn } from '../scheduler.js';
+import { shiftTimes } from '../export.js';
 import {
   el, fill, toast, confirmDialog, emptyState, promptText, openSheet, closeSheet, monthGrid, collapsible,
 } from '../ui.js';
@@ -186,19 +187,37 @@ function binIcon() {
   return svg;
 }
 
-/** A row for a saved roster: opens the read-only day-by-day view. */
+/** "9:00–15:00, 17:00–21:00": the distinct times of a roster's filled shifts, earliest first; '' when none has times. */
+function rosterTimes(r) {
+  const usual = store.shifts();
+  // Each shift as it ran on its own day, so a day's changed times count too.
+  const timed = r.assignments
+    .map((a) => shiftOn(r, a.date, a.shiftId, usual))
+    .filter((s) => s?.start && s?.end)
+    .sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
+  return [...new Set(timed.map(shiftTimes))].join(', ');
+}
+
+/**
+ * A row for a saved roster: opens the read-only day-by-day view. Shows its
+ * dates once, its shift times, and its name only when it was given one (the
+ * automatic "Roster 4 Oct 2026" just repeats the date).
+ */
 function savedRow(r, container) {
+  const first = formatDate(r.startDate, { withWeekday: false });
+  const last = formatDate(r.endDate, { withWeekday: false });
+  const dates = first === last ? first : `${first} – ${last}`;
+  const named = r.name !== builderView.autoName(r.startDate);
   const shiftsCount = r.assignments.length;
+  // Shift times, or the count of filled shifts when none of them has times.
+  const times = rosterTimes(r) || `${shiftsCount} shift${shiftsCount === 1 ? '' : 's'} assigned`;
   return el('button', {
     type: 'button', className: 'item',
     onclick: () => { openId = r.id; render(container); },
   }, [
     el('div', { className: 'item-main' }, [
-      el('div', { className: 'item-title', textContent: r.name }),
-      el('div', {
-        className: 'item-sub',
-        textContent: `${formatDate(r.startDate, { withWeekday: false })} – ${formatDate(r.endDate, { withWeekday: false })} · ${shiftsCount} shift${shiftsCount === 1 ? '' : 's'} assigned`,
-      }),
+      el('div', { className: 'item-title', textContent: named ? r.name : dates }),
+      el('div', { className: 'item-sub', textContent: named ? `${dates} · ${times}` : times }),
     ]),
   ]);
 }

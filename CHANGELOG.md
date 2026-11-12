@@ -6,6 +6,15 @@ pull requests, which are linked so the full detail is one click away.
 
 ## Unreleased
 
+- On a phone, the People, Shifts and Skills tabs of Team now sit in a row
+  directly above the bottom tabs, full width and within thumb reach, instead
+  of as small buttons at the top of the page. On a wide screen they are a
+  full-width row at the top.
+- A built roster in the Rosters list no longer shows its dates twice. It
+  shows the dates once, then its shift times (such as 9:00–15:00), and its
+  name only when you gave it one. A roster on a single day shows that one
+  date instead of a range.
+
 ## 12 November 2026
 
 From [#45].
