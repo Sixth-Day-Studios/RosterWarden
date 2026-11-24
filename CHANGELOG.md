@@ -6,6 +6,11 @@ pull requests, which are linked so the full detail is one click away.
 
 ## Unreleased
 
+- Offering shifts to staff no longer replaces the shifts you offered before.
+  Offering more dates adds them to what is already out, keeping every shift
+  staff have taken, and building a roster on some offered dates takes only
+  those dates off staff pages; the rest stay offered.
+
 - On a phone, the People, Shifts and Skills tabs of Team now sit in a row
   directly above the bottom tabs, full width and within thumb reach, instead
   of as small buttons at the top of the page. On a wide screen they are a

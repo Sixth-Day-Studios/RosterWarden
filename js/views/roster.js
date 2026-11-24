@@ -245,15 +245,14 @@ export function render(container) {
 
   /**
    * Build the roster for the picked dates, save it, and open it. Shifts staff
-   * took from shifts offered to staff go in first, locked; building on any of
-   * those dates finishes that set, so it leaves their pages.
+   * took from shifts offered to staff go in first, locked; the dates built
+   * leave their pages, and any other offered dates stay out.
    */
   const onBuild = () => {
     const dates = datesOrComplain();
     if (!dates) return;
-    const open = staff.openShifts();
     const locked = staff.openLocked(dates, dayListFor);
-    if (open && open.days.some((d) => picked.has(d))) staff.stopOpenShifts(open.id);
+    staff.finishOpenDays(dates);
     finish(buildRoster({
       locked,
       orgId: org.id,
@@ -271,7 +270,7 @@ export function render(container) {
 
   /**
    * Send the picked dates' shifts out for staff to take on their links, first
-   * come, first served, after saying what that does. Replaces any set out now.
+   * come, first served, after saying what that does. Adds to any set out now.
    */
   const onSendOut = async () => {
     const dates = datesOrComplain();
@@ -287,7 +286,7 @@ export function render(container) {
       `${people.length === 1 ? '1 person' : `${people.length} people`} with a staff link will see the shifts on these ${dates.length === 1 ? 'date' : `${dates.length} dates`}. `
         + 'The first to take a shift gets it, one a day each, and anyone can say they can\'t do a day. '
         + 'When you build, the shifts taken are locked in and the rest are filled as usual.'
-        + (before ? ' This replaces the shifts you offered before.' : ''),
+        + (before ? ' The shifts you offered before stay offered, with what\'s been taken.' : ''),
       'Offer',
     );
     if (!ok) return;
