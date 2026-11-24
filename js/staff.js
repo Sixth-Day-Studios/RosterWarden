@@ -756,18 +756,30 @@ export function openShifts(orgId = store.data.currentOrgId) {
   return store.data.openShifts.find((o) => o.orgId === orgId && !o.closedAt) || null;
 }
 
-/** Send out `days`, each running `dayShifts[day]`, replacing any set already out. Then publish to every page. */
+/**
+ * Send out `days`, each running `dayShifts[day]`, then publish to every page.
+ * A set already out is added to, never replaced: its other dates, and what
+ * was taken on them, stay as they are.
+ */
 export async function sendOpenShifts(days, dayShifts) {
   const orgId = store.data.currentOrgId;
+  const before = openShifts(orgId);
+  const sent = Object.fromEntries(days.map((d) => [d, dayShifts[d] || []]));
   const open = {
+    // A fresh id asks everyone to answer again, as there is something new to take.
     id: Math.random().toString(36).slice(2, 10) + Date.now().toString(36),
-    orgId, key: link.newLinkKey(), days: [...days].sort(),
-    dayShifts: Object.fromEntries(days.map((d) => [d, dayShifts[d] || []])),
+    orgId,
+    // The same key keeps the claims already made on the server.
+    key: before?.key || link.newLinkKey(),
+    days: [...new Set([...(before?.days || []), ...days])].sort(),
+    dayShifts: { ...before?.dayShifts, ...sent },
     sentAt: new Date().toISOString(), closedAt: null, claims: {},
     // Claims on this set are sealed for the slot they are on (see takeClaim in js/staff-link.js).
-    bound: true,
+    bound: before ? before.bound === true : true,
   };
-  // Only the set out now is kept; a stopped or replaced one is finished with.
+  // Keep what was taken on the slots still offered (a date sent again keeps the claims its shifts still match).
+  const refs = new Set(slotsFor(open).map((s) => s.ref));
+  for (const [ref, c] of Object.entries(before?.claims || {})) if (refs.has(ref)) open.claims[ref] = c;
   store.data.openShifts = [...store.data.openShifts.filter((o) => o.orgId !== orgId), open];
   store.save();
   await publish();
@@ -778,6 +790,27 @@ export async function sendOpenShifts(days, dayShifts) {
 export function stopOpenShifts(id) {
   if (!store.data.openShifts.some((o) => o.id === id)) return;
   store.data.openShifts = store.data.openShifts.filter((o) => o.id !== id);
+  store.save();
+  publish().catch(() => { /* published on the next sync instead */ });
+}
+
+/**
+ * Take `dates` out of the organisation's open set once they are built, so
+ * they leave every page; its other dates stay out. Stops the set when none
+ * are left. Published in the background.
+ */
+export function finishOpenDays(dates) {
+  const open = openShifts();
+  if (!open || !open.days.some((d) => dates.includes(d))) return;
+  const days = open.days.filter((d) => !dates.includes(d));
+  if (days.length === 0) {
+    stopOpenShifts(open.id);
+    return;
+  }
+  open.days = days;
+  open.dayShifts = Object.fromEntries(days.map((d) => [d, open.dayShifts[d] || []]));
+  const refs = new Set(slotsFor(open).map((s) => s.ref));
+  open.claims = Object.fromEntries(Object.entries(open.claims).filter(([ref]) => refs.has(ref)));
   store.save();
   publish().catch(() => { /* published on the next sync instead */ });
 }

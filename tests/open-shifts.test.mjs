@@ -206,6 +206,35 @@ test('sent out, taken first come first served, then built with the taken shifts 
   assert.equal(await pageOf(sam), null);
 });
 
+test('offering more dates adds to what is out, and building some dates leaves the others offered', async () => {
+  const [sam, ann] = await setUp();
+  const each = (days) => Object.fromEntries(days.map((d) => [d, store.shifts()]));
+  await staff.sendOpenShifts(['2026-12-03'], each(['2026-12-03']));
+  const third = (await pageOf(sam)).slots[0].ref;
+  assert.equal(await take(sam, third), true);
+
+  // A second offer for the 9th keeps the 3rd, and Sam's shift on it.
+  await staff.sendOpenShifts(['2026-12-09'], each(['2026-12-09']));
+  const page = await pageOf(ann);
+  assert.deepEqual([...new Set(page.slots.map((s) => s.date))], ['2026-12-03', '2026-12-09']);
+  await staff.refreshClaims();
+  assert.equal(staff.openShifts().claims[third]?.personId, sam.id, 'what was taken on the 3rd is kept');
+  assert.equal(await take(ann, third), false, 'still Sam\'s');
+
+  // Building the 3rd takes only the 3rd off the pages.
+  assert.equal(staff.openLocked(['2026-12-03'], () => store.shifts())[0]?.personId, sam.id);
+  staff.finishOpenDays(['2026-12-03']);
+  await staff.publish();
+  assert.deepEqual([...new Set((await pageOf(ann)).slots.map((s) => s.date))], ['2026-12-09']);
+  assert.deepEqual(staff.openShifts().claims, {});
+
+  // Building the last date stops the set.
+  staff.finishOpenDays(['2026-12-09']);
+  await staff.publish();
+  assert.equal(staff.openShifts(), null);
+  assert.equal(await pageOf(ann), null);
+});
+
 test('a claim only counts on the slot it was made for: the server can\'t move it to another', async () => {
   const [sam] = await setUp();
   const days = ['2026-11-07', '2026-11-14'];
