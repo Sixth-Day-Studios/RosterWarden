@@ -6,6 +6,10 @@ pull requests, which are linked so the full detail is one click away.
 
 ## Unreleased
 
+## 26 November 2026
+
+From [#48].
+
 - New **Send changes** option in a roster's Send menu. After people have been
   sent their shifts, by Email everyone or one by one from Message each person,
   a changed roster lists only the people whose shifts changed: new people get
@@ -369,3 +373,4 @@ First release of the web app, rebuilt from the Rosterm8 desktop app (see
 [#45]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/45
 [#46]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/46
 [#47]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/47
+[#48]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/48
