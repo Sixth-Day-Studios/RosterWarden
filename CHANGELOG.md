@@ -6,10 +6,36 @@ pull requests, which are linked so the full detail is one click away.
 
 ## Unreleased
 
+## 26 November 2026
+
+From [#48].
+
+- New **Send changes** option in a roster's Send menu. After people have been
+  sent their shifts, by Email everyone or one by one from Message each person,
+  a changed roster lists only the people whose shifts changed: new people get
+  their shifts, moved people get "your shifts have changed", and anyone taken
+  off is told so. Email them together or message them one by one; everyone
+  else is left alone.
+- After **Offer to staff**, a **Let staff know?** screen gives the same ways
+  to tell people as a roster's Send menu: one group message, each person's own
+  message with their staff link (Text, Email or Share from this phone), or
+  Email everyone. Server-sent emails ask people to open their link rather than
+  carrying it, since the link is a private key.
+- **What's new** in Settings lists what has changed in RosterWarden, back to
+  the first release, and the website has the same list.
+
+## 24 November 2026
+
+From [#47].
+
 - Offering shifts to staff no longer replaces the shifts you offered before.
   Offering more dates adds them to what is already out, keeping every shift
   staff have taken, and building a roster on some offered dates takes only
   those dates off staff pages; the rest stay offered.
+
+## 12 November 2026
+
+From [#45] and [#46].
 
 - On a phone, the People, Shifts and Skills tabs of Team now sit in a row
   directly above the bottom tabs, full width and within thumb reach, instead
@@ -19,11 +45,6 @@ pull requests, which are linked so the full detail is one click away.
   shows the dates once, then its shift times (such as 9:00–15:00), and its
   name only when you gave it one. A roster on a single day shows that one
   date instead of a range.
-
-## 12 November 2026
-
-From [#45].
-
 - Building a big roster is about six times faster (100 people over 90 days
   went from about 0.9 seconds to 0.15), so the screen no longer hangs while
   it works.
@@ -350,3 +371,6 @@ First release of the web app, rebuilt from the Rosterm8 desktop app (see
 [#43]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/43
 [#44]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/44
 [#45]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/45
+[#46]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/46
+[#47]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/47
+[#48]: https://github.com/Sixth-Day-Studios/RosterWarden/pull/48

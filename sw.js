@@ -55,6 +55,7 @@ const SHELL = [
   './js/email.js',
   './js/views/account.js',
   './js/views/settings.js',
+  './js/whats-new.js',
   './js/views/wizard.js',
   './icons/icon-180.png',
   './icons/icon-192.png',

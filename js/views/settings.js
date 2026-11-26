@@ -23,6 +23,8 @@ import { openAskGuardian } from '../askguardian.js';
 import { signInButtons } from './account.js';
 import { STORED_KEY as STAFF_LINK_KEY } from './staff.js';
 import { looksLikeEmail } from '../email.js';
+import { WHATS_NEW } from '../whats-new.js';
+import { formatDate } from '../scheduler.js';
 
 /**
  * Which sub-screen is open, or null for the menu.
@@ -63,6 +65,7 @@ const MENU = [
     items: [
       { id: 'install', label: 'Add to Home Screen', hint: 'One tap away, and working offline' },
       // Not a section: opens the Ask Guardian chat in an overlay.
+      { id: 'whats-new', label: "What's new", hint: 'What has changed in RosterWarden lately' },
       { id: 'ask', label: 'Ask Guardian', hint: 'Ask a question and get an answer', run: openAskGuardian },
       // Not a section: opens the website's guide in a new tab.
       { id: 'help', label: 'Help and FAQ', hint: 'Step-by-step guide and common questions', run: openHelp, external: true },
@@ -154,8 +157,20 @@ function renderSectionBody(name, container) {
     case 'planning-center': return [planningCenter.renderCard(redraw)];
     case 'ai': return [renderAICard()];
     case 'install': return [renderInstallCard(container)];
+    case 'whats-new': return [renderWhatsNewCard()];
     default: return [];
   }
+}
+
+/** Section: What's new, a dated list of recent changes (js/whats-new.js), newest first. */
+function renderWhatsNewCard() {
+  return el('div', { className: 'card' }, [
+    el('h2', { textContent: "What's new" }),
+    ...WHATS_NEW.flatMap(({ date, items }) => [
+      el('label', { className: 'label', textContent: formatDate(date) }),
+      el('ul', {}, items.map((text) => el('li', { textContent: text }))),
+    ]),
+  ]);
 }
 
 /**

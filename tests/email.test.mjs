@@ -83,3 +83,12 @@ test("the worker's reason comes back as something to read", async () => {
   globalThis.fetch = async () => { throw new TypeError('Failed to fetch'); };
   await assert.rejects(sendRoster({ name: 'C' }, 'R', [{ to: 'a@b.co', text: 'x' }]), /Could not reach/);
 });
+
+test('addressed applies the same email rules to any list of messages, in the order given', async () => {
+  const { addressed } = await import('../js/email.js');
+  const { messages, skipped } = addressed([
+    { person: people[3], text: 'b' }, { person: people[0], text: 'a' }, { person: people[1], text: 'c' },
+  ]);
+  assert.deepEqual(messages.map((m) => [m.person.name, m.to, m.text]), [['Tia Lee', 'SAM@example.com', 'b']]);
+  assert.deepEqual(skipped.map((s) => [s.person.name, s.why]), [['Sam Lee', 'same email as Tia Lee'], ['Ann Ho', 'no email saved']]);
+});

@@ -29,6 +29,7 @@ const PLACES = {
   'settings-planning-center': { view: 'settings', section: 'planning-center', find: 'Planning Center' },
   'settings-ai': { view: 'settings', section: 'ai', find: 'AI assist' },
   'settings-install': { view: 'settings', section: 'install', find: 'Add to Home Screen' },
+  'settings-whats-new': { view: 'settings', section: 'whats-new', find: "What's new" },
   'delete-all': { view: 'settings', find: 'Delete all data' },
 };
 

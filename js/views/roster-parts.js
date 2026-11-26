@@ -15,10 +15,11 @@ import { responseKey } from '../sources/planning-center.js';
 import { formatDate, toDays, counts, canDoRole, canWork, shiftsOn, shiftOn } from '../scheduler.js';
 import {
   rosterDays, rosterLines, shiftTimes, formatMessage, formatPerPerson, toCSV, toICS, fileBase,
-  hoursByPerson, messageFor,
+  hoursByPerson, messageFor, changesSince, markSent,
 } from '../export.js';
 import * as email from '../email.js';
 import * as account from '../account.js';
+import { linkUrl } from '../staff-link.js';
 
 /**
  * People who could be put on `date` without double-booking them or working
@@ -455,23 +456,8 @@ function openMessages(roster, people, shifts) {
     .map((person) => ({ person, text: messageFor(roster, person, shifts, roles) }))
     .filter((x) => x.text)
     .sort((a, b) => a.person.name.localeCompare(b.person.name))
-    .map(({ person, text }) => {
-      const link = (label, href) => el('a', { className: 'btn btn-sm', href, textContent: label });
-      return el('div', { className: 'export-row' }, [
-        el('div', { className: 'item-main' }, [
-          el('div', { className: 'item-title', textContent: person.name }),
-          el('div', { className: 'item-sub', textContent: text.split('\n').slice(1).join(' ').replace(/• /g, '') }),
-        ]),
-        el('div', { className: 'row-tight' }, [
-          person.phone ? link('Text', `sms:${person.phone}?&body=${encodeURIComponent(text)}`) : null,
-          person.email ? link('Email', `mailto:${encodeURIComponent(person.email).replace(/%40/g, '@')}?subject=${encodeURIComponent(roster.name)}&body=${encodeURIComponent(text)}`) : null,
-          el('button', {
-            className: 'btn btn-sm', textContent: navigator.share ? 'Share' : 'Copy',
-            onclick: () => (navigator.share ? shareText(roster.name, text) : copyText(text)),
-          }),
-        ]),
-      ]);
-    });
+    .map(({ person, text }) => personRow(roster.name, person, text, text.split('\n').slice(1).join(' ').replace(/• /g, ''),
+      () => recordSent(roster, [person], shifts)));
   return dialog((close) => [
     el('h2', { textContent: 'Message each person' }),
     rows.length ? el('div', { className: 'list' }, rows) : el('div', { className: 'muted', textContent: 'Nobody is on this roster yet.' }),
@@ -482,19 +468,135 @@ function openMessages(roster, people, shifts) {
   ]);
 }
 
+/**
+ * One person in a message list: their name, a line about the message, and
+ * Text / Email / Share (or Copy) buttons that open it filled in. Tapping any
+ * of them calls `told` (a roster uses it to note what it sent, for Send
+ * changes). `title` is the email subject and share title.
+ */
+function personRow(title, person, text, sub, told = () => {}) {
+  const link = (label, href) => el('a', { className: 'btn btn-sm', href, textContent: label, onclick: told });
+  return el('div', { className: 'export-row' }, [
+    el('div', { className: 'item-main' }, [
+      el('div', { className: 'item-title', textContent: person.name }),
+      el('div', { className: 'item-sub', textContent: sub }),
+    ]),
+    el('div', { className: 'row-tight' }, [
+      person.phone ? link('Text', `sms:${person.phone}?&body=${encodeURIComponent(text)}`) : null,
+      person.email ? link('Email', `mailto:${encodeURIComponent(person.email).replace(/%40/g, '@')}?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(text)}`) : null,
+      el('button', {
+        className: 'btn btn-sm', textContent: navigator.share ? 'Share' : 'Copy',
+        onclick: () => { told(); return navigator.share ? shareText(title, text) : copyText(text); },
+      }),
+    ]),
+  ]);
+}
+
+/** Note on the roster that `people` now have its current shifts, so Send changes skips them. */
+function recordSent(roster, people, shifts) {
+  const current = store.roster(roster.id) || roster;
+  store.updateRoster(roster.id, { sent: markSent(current, people, shifts, store.roles()) });
+}
+
+/**
+ * After shifts are offered on staff links: the same ways to tell people as a
+ * roster's Send menu. A group message, each person's own message with their
+ * link (texted or shared from this phone), or one email each. The emails go
+ * through our server, so they don't carry the link (a private key); they say
+ * to open it instead.
+ */
+export function offerNotice(dates, people) {
+  const title = 'Shifts up for grabs';
+  const when = nameList(dates.map((d) => formatDate(d).replace(/ \d{4}$/, '').replace(/ 0(\d)/, ' $1')));
+  const how = "The first to take a shift gets it, and you can say if you can't do a day.";
+  const group = `There are shifts up for grabs on ${when}. Open your RosterWarden staff link to take one. ${how}`;
+  const byName = [...people].sort((a, b) => a.name.localeCompare(b.name));
+  const mine = (p) => `Hi ${p.name.split(' ')[0]}, there are shifts up for grabs on ${when}. Take the ones you'd like here: `
+    + `${linkUrl(p.staffLink.key)}\n${how}`;
+  const emailRows = byName.map((person) => ({
+    person, text: `Hi ${person.name.split(' ')[0]}, there are shifts up for grabs on ${when}. `
+      + `Open your RosterWarden staff link (the one you were sent before) to take one. ${how}`,
+  }));
+  return dialog((close) => [
+    el('h2', { textContent: 'Let staff know?' }),
+    el('p', { className: 'muted', textContent: 'The shifts are on their links now. Tell them so they look:' }),
+    el('div', { className: 'export-row' }, [
+      el('div', { className: 'item-main' }, [
+        el('div', { className: 'item-title', textContent: 'Message' }),
+        el('div', { className: 'item-sub', textContent: 'For a group chat: one message for everyone.' }),
+      ]),
+      el('div', { className: 'row-tight' }, [
+        el('button', { className: 'btn btn-sm', textContent: 'Copy', onclick: () => copyText(group) }),
+        navigator.share ? el('button', { className: 'btn btn-sm', textContent: 'Share', onclick: () => shareText(title, group) }) : null,
+      ]),
+    ]),
+    email.isAvailable() ? el('div', { className: 'export-row' }, [
+      el('div', { className: 'item-main' }, [
+        el('div', { className: 'item-title', textContent: 'Email everyone' }),
+        el('div', { className: 'item-sub', textContent: 'One email each, sent for you, asking them to open their link. It asks first.' }),
+      ]),
+      el('div', { className: 'row-tight' }, [
+        el('button', {
+          className: 'btn btn-sm', textContent: 'Email…',
+          onclick: () => { close(); emailEveryone(title, emailRows, 'an email asking them to open their staff link'); },
+        }),
+      ]),
+    ]) : null,
+    el('label', { className: 'label', textContent: 'Message each person, with their own link' }),
+    el('div', { className: 'list' }, byName.map((p) => personRow(title, p, mine(p), `Their link to ${when}`))),
+    el('div', { className: 'modal-actions' }, [
+      el('button', { className: 'btn btn-primary', textContent: 'Done', onclick: () => close() }),
+    ]),
+  ]);
+}
+
+/** What Send changes says about each kind of change. */
+const CHANGE_LABELS = { new: 'New on the roster', changed: 'Shifts changed', off: 'Taken off the roster' };
+
+/**
+ * Send changes: just the people whose shifts differ from what they were last
+ * sent, including anyone taken off, each with a message saying what changed.
+ * They can be emailed together or messaged one by one.
+ */
+function openChanges(roster, people, shifts) {
+  const changes = changesSince(roster, people, shifts, store.roles());
+  const rows = changes.map(({ person, kind, text }) => personRow(roster.name, person, text,
+    `${CHANGE_LABELS[kind]}. ${text.split('\n').slice(1).join(' ').replace(/• /g, '')}`.trim(),
+    () => recordSent(roster, [person], shifts)));
+  return dialog((close) => [
+    el('h2', { textContent: 'Send changes' }),
+    el('p', {
+      className: 'muted',
+      textContent: `${changes.length === 1 ? '1 person has' : `${changes.length} people have`} changed since they were sent their shifts. `
+        + 'Everyone else is left alone.',
+    }),
+    email.isAvailable() ? el('div', { className: 'row' }, [
+      el('button', {
+        className: 'btn btn-primary', textContent: 'Email them…',
+        onclick: () => { close(); emailEveryone(roster.name, changes, 'an email saying what changed for them', (sent) => recordSent(roster, sent, shifts)); },
+      }),
+    ]) : null,
+    el('div', { className: 'list' }, rows),
+    el('div', { className: 'modal-actions' }, [
+      el('button', { className: 'btn', textContent: 'Done', onclick: () => close() }),
+    ]),
+  ]);
+}
+
 /** "Ann, Sam and Lee" - names in a sentence. */
 function nameList(names) {
   return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
 /**
- * Email everyone on the roster their own shifts, sent by the server so no
- * mail app opens. It always asks first: who will get one, who won't and why,
+ * Email each of `rows` (`[{ person, text }]`) their message, sent by the
+ * server so no mail app opens; `what` says what the email is. It always asks
+ * first: who will get one, who won't and why,
  * who it comes from and where replies go, and that this is the one time the
  * roster leaves the phone unencrypted. Afterwards it says who was emailed.
  */
-async function emailEveryone(roster, people, shifts) {
-  const { messages, skipped } = email.emailList(roster, people, shifts, store.roles());
+async function emailEveryone(title, rows, what = 'an email with just their own shifts', onSent = () => {}) {
+  const { messages, skipped } = email.addressed(rows);
   const org = store.currentOrg();
   const signedIn = account.current();
   const skippedLine = skipped.length
@@ -511,7 +613,7 @@ async function emailEveryone(roster, people, shifts) {
       el('p', {
         textContent: !signedIn
           ? 'Sign in first (Settings, Account). Emails are sent for your account, so only you can send them.'
-          : 'Nobody on this roster has an email saved.',
+          : 'Nobody here has an email saved.',
       }),
       signedIn ? skippedLine : null,
       el('div', { className: 'modal-actions' }, [
@@ -530,7 +632,8 @@ async function emailEveryone(roster, people, shifts) {
       sendBtn.textContent = 'Sending…';
       err.textContent = '';
       try {
-        await email.sendRoster(org, roster.name, messages);
+        await email.sendRoster(org, title, messages);
+        onSent(messages.map((m) => m.person));
         close(true);
       } catch (e) {
         err.textContent = e.message;
@@ -541,7 +644,7 @@ async function emailEveryone(roster, people, shifts) {
     return [
       el('h2', { textContent: 'Email everyone?' }),
       el('p', {
-        textContent: `${n === 1 ? '1 person gets' : `${n} people get`} an email with just their own shifts: `
+        textContent: `${n === 1 ? '1 person gets' : `${n} people get`} ${what}: `
           + nameList(messages.map((m) => m.person.name)) + '.',
       }),
       skippedLine,
@@ -700,6 +803,7 @@ async function shareText(title, text) {
  */
 function openExport(roster, people, shifts, onReplies) {
   const base = fileBase(roster);
+  const changed = changesSince(roster, people, shifts, store.roles());
 
   /** One row of the menu: what it is, a line on when to use it, its buttons. */
   const row = (title, hint, actions) => el('div', { className: 'export-row' }, [
@@ -738,7 +842,19 @@ function openExport(roster, people, shifts, onReplies) {
       email.isAvailable() ? row('Email everyone', 'Each person gets their own shifts by email, sent for you. It asks first.', [
         el('button', {
           className: 'btn btn-sm', textContent: 'Email…',
-          onclick: () => { close(); emailEveryone(roster, people, shifts); },
+          onclick: () => {
+            close();
+            const rows = [...people].sort((a, b) => a.name.localeCompare(b.name))
+              .map((person) => ({ person, text: messageFor(roster, person, shifts, store.roles()) }))
+              .filter((x) => x.text);
+            emailEveryone(roster.name, rows, undefined, (sent) => recordSent(roster, sent, shifts));
+          },
+        }),
+      ]) : null,
+      changed.length ? row('Send changes', `Only who changed since they were sent their shifts: ${nameList(changed.map((c) => c.person.name))}.`, [
+        el('button', {
+          className: 'btn btn-sm', textContent: 'Open',
+          onclick: () => { close(); openChanges(roster, people, shifts); },
         }),
       ]) : null,
       row('Print or PDF', 'A clean page for the noticeboard. Choose "Save as PDF" to email it.', [

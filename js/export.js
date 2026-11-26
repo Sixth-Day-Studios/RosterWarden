@@ -57,13 +57,23 @@ export function hoursByPerson(roster, shifts) {
  * Null when they are not on the roster.
  */
 export function messageFor(roster, person, shifts, roles = []) {
+  const lines = shiftLines(roster, person, shifts, roles);
+  return lines && `Hi ${firstName(person)}, you're on the roster (${roster.name}):\n${lines}`;
+}
+
+/**
+ * One person's dates on a roster as "• Mon 2 Nov: Cafe 8:00–12:00" lines, or
+ * null when they are not on it. This is what a roster records as sent to
+ * someone, so renaming the roster doesn't count as their shifts changing.
+ */
+export function shiftLines(roster, person, shifts, roles = []) {
   const roleNames = new Map(roles.map((r) => [r.id, r.name]));
   const mine = roster.assignments
     .filter((a) => a.personId === person.id)
     .sort((x, y) => x.date.localeCompare(y.date));
   if (mine.length === 0) return null;
 
-  const lines = mine.map((a) => {
+  return mine.map((a) => {
     const shift = shiftOn(roster, a.date, a.shiftId, shifts);
     const times = shiftTimes(shift);
     const detail = [
@@ -71,8 +81,48 @@ export function messageFor(roster, person, shifts, roles = []) {
       a.roleId != null ? (roleNames.get(a.roleId) || 'removed role') : null,
     ].filter(Boolean).join(', ');
     return `• ${shortDate(a.date)}: ${detail}`;
-  });
-  return `Hi ${person.name.split(' ')[0]}, you're on the roster (${roster.name}):\n${lines.join('\n')}`;
+  }).join('\n');
+}
+
+/**
+ * Who needs telling about a change since they were last sent their shifts:
+ * `[{ person, kind, text }]` by name, where kind is 'new' (never sent any),
+ * 'changed' or 'off' (sent some, now on none). `roster.sent` maps person id to
+ * the `shiftLines` they were sent; a roster never sent per person has no
+ * changes to send. People deleted since are left out.
+ */
+export function changesSince(roster, people, shifts, roles = []) {
+  if (!roster.sent) return [];
+  const out = [];
+  for (const person of [...people].sort((a, b) => a.name.localeCompare(b.name))) {
+    const now = shiftLines(roster, person, shifts, roles);
+    const was = roster.sent[person.id] ?? null;
+    if (now === was) continue;
+    const hi = `Hi ${firstName(person)}`;
+    if (!was) out.push({ person, kind: 'new', text: messageFor(roster, person, shifts, roles) });
+    else if (now) out.push({ person, kind: 'changed', text: `${hi}, your shifts have changed (${roster.name}). You're now on:\n${now}` });
+    else out.push({ person, kind: 'off', text: `${hi}, there's been a change: you're no longer on the roster (${roster.name}).` });
+  }
+  return out;
+}
+
+/**
+ * `roster.sent` after telling `people` where they stand now: their current
+ * `shiftLines`, or no entry for someone no longer on it.
+ */
+export function markSent(roster, people, shifts, roles = []) {
+  const sent = { ...roster.sent };
+  for (const person of people) {
+    const lines = shiftLines(roster, person, shifts, roles);
+    if (lines) sent[person.id] = lines;
+    else delete sent[person.id];
+  }
+  return sent;
+}
+
+/** The first word of someone's name, for a greeting. */
+function firstName(person) {
+  return person.name.split(' ')[0];
 }
 
 /** "Sun 11 Oct" - the short date used in messages, where the year is noise. */
