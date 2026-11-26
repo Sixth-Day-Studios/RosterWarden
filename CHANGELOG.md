@@ -6,6 +6,12 @@ pull requests, which are linked so the full detail is one click away.
 
 ## Unreleased
 
+- New **Send changes** option in a roster's Send menu. After people have been
+  sent their shifts, by Email everyone or one by one from Message each person,
+  a changed roster lists only the people whose shifts changed: new people get
+  their shifts, moved people get "your shifts have changed", and anyone taken
+  off is told so. Email them together or message them one by one; everyone
+  else is left alone.
 - Offering shifts to staff no longer replaces the shifts you offered before.
   Offering more dates adds them to what is already out, keeping every shift
   staff have taken, and building a roster on some offered dates takes only

@@ -220,3 +220,34 @@ test('formatPerPerson keeps two different people with the same name apart', () =
   const sam = formatPerPerson(r, sams, shifts).split('\n').filter((l) => l.startsWith('Sam:'));
   assert.equal(sam.length, 2);
 });
+
+import { changesSince, markSent } from '../js/export.js';
+
+test('Send changes finds only who changed since they were sent their shifts', () => {
+  const shifts = [{ id: 10, name: 'Cafe', start: '08:00', end: '12:00', headcount: 3 }];
+  const people = [
+    { id: 1, name: 'Ann Ho' }, { id: 2, name: 'Bea Fox' }, { id: 3, name: 'Cal Ng' }, { id: 4, name: 'Dee Lo' },
+  ];
+  const on = (personId, date = '2026-11-02') => ({ date, shiftId: 10, personId });
+  let roster = { name: 'Week 1', days: ['2026-11-02', '2026-11-03'], assignments: [on(1), on(2), on(3)] };
+
+  assert.deepEqual(changesSince(roster, people, shifts), [], 'never sent per person: nothing to send');
+
+  roster = { ...roster, sent: markSent(roster, people, shifts) };
+  assert.deepEqual(Object.keys(roster.sent), ['1', '2', '3'], 'only people on it are recorded');
+  assert.deepEqual(changesSince(roster, people, shifts), []);
+  assert.deepEqual(changesSince({ ...roster, name: 'Renamed' }, people, shifts), [], 'a rename is not a change');
+
+  // Bea can't make it: Dee takes her place, and Cal moves to the Tuesday.
+  roster = { ...roster, assignments: [on(1), on(4), on(3, '2026-11-03')] };
+  const changes = changesSince(roster, people, shifts);
+  assert.deepEqual(changes.map((c) => [c.person.name, c.kind]), [['Bea Fox', 'off'], ['Cal Ng', 'changed'], ['Dee Lo', 'new']]);
+  assert.match(changes[0].text, /^Hi Bea, there's been a change: you're no longer on the roster \(Week 1\)\.$/);
+  assert.equal(changes[1].text, "Hi Cal, your shifts have changed (Week 1). You're now on:\n• Tue 3 Nov: Cafe 8:00–12:00");
+  assert.match(changes[2].text, /^Hi Dee, you're on the roster \(Week 1\):/);
+
+  // Telling them clears the changes, and drops Bea from the record.
+  roster = { ...roster, sent: markSent(roster, changes.map((c) => c.person), shifts) };
+  assert.deepEqual(changesSince(roster, people, shifts), []);
+  assert.deepEqual(Object.keys(roster.sent).sort(), ['1', '3', '4']);
+});

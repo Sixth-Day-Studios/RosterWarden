@@ -24,13 +24,22 @@ export function looksLikeEmail(text) {
  * getting another person's email (one email per address).
  */
 export function emailList(roster, people, shifts, roles = []) {
+  return addressed([...people]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((person) => ({ person, text: messageFor(roster, person, shifts, roles) }))
+    .filter((x) => x.text));
+}
+
+/**
+ * Turn `[{ person, text }]` into who gets an email, as `emailList` returns it:
+ * someone with no usable email, or one already getting another person's
+ * email, is skipped with the reason. Keeps the order given.
+ */
+export function addressed(rows) {
   const messages = [];
   const skipped = [];
   const used = new Map();   // lower-cased address -> the person getting it
-  const byName = [...people].sort((a, b) => a.name.localeCompare(b.name));
-  for (const person of byName) {
-    const text = messageFor(roster, person, shifts, roles);
-    if (!text) continue;
+  for (const { person, text } of rows) {
     const to = String(person.email || '').trim();
     if (!looksLikeEmail(to)) {
       skipped.push({ person, why: to ? 'email doesn\'t look right' :'no email saved' });
