@@ -24,6 +24,7 @@ import * as teamView from './team.js';
 import * as savedView from './saved.js';
 import * as staff from '../staff.js';
 import { slotsFor, answered } from '../open-shifts.js';
+import { offerNotice } from './roster-parts.js';
 
 // The calendar selection, kept across re-renders (and trips to other tabs)
 // until a roster is built from it.
@@ -297,6 +298,8 @@ export function render(container) {
       toast('Saved: they\'ll reach their links next time you\'re online');
     }
     render(container);
+    // Then the same ways to tell people as a roster's Send menu.
+    offerNotice(dates, people);
   };
 
   /** Build from a set offered to staff: its dates and shifts, with what's been taken locked in. */
